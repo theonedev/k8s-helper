@@ -18,6 +18,8 @@ import javax.ws.rs.core.StreamingOutput;
 
 import org.apache.commons.lang3.StringUtils;
 import org.glassfish.jersey.client.ClientProperties;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 
@@ -36,13 +38,10 @@ public class KubernetesHelper {
 	
 	public static final String JOB_FINISH_FILE = "$OneDev-Job-Finished$";
 	
-	private static final String ENV_WORKSPACE = "ONEDEV_WORKSPACE";
+	private static final Logger logger = LoggerFactory.getLogger(KubernetesHelper.class);
 	
 	public static File getWorkspace() {
-		String workspace = System.getenv(ENV_WORKSPACE);
-		if (workspace != null) 
-			return new File(workspace);
-		else if (isWindows()) 
+		if (isWindows()) 
 			return new File("C:\\onedev-workspace");
 		else 
 			return new File("/onedev-workspace");
@@ -52,23 +51,23 @@ public class KubernetesHelper {
 		return System.getProperty("os.name").toLowerCase().contains("windows");
 	}
 	
-	private static LineConsumer newStdoutPrinter() {
+	private static LineConsumer newInfoLogger() {
 		return new LineConsumer() {
 
 			@Override
 			public void consume(String line) {
-				System.out.println(line);
+				logger.info(line);
 			}
 			
 		};
 	}
 	
-	private static LineConsumer newStderrPrinter() {
+	private static LineConsumer newErrorLogger() {
 		return new LineConsumer() {
 
 			@Override
 			public void consume(String line) {
-				System.err.println(line);
+				logger.error(line);
 			}
 			
 		};
@@ -76,7 +75,7 @@ public class KubernetesHelper {
 	
 	@SuppressWarnings("unchecked")
 	public static void init(String serverUrl, String jobId, File workspace) {
-		System.out.println("Initializing workspace from '" + serverUrl + "'...");
+		logger.info("Initializing workspace from '" + serverUrl + "'...");
 		
 		Client client = ClientBuilder.newClient();
 		try {
@@ -84,7 +83,7 @@ public class KubernetesHelper {
 			Invocation.Builder builder =  target.request(MediaType.APPLICATION_JSON);
 			builder.header(KubernetesHelper.JOB_ID_HTTP_HEADER, jobId);
 			
-			System.out.println("Retrieving job context...");
+			logger.info("Retrieving job context...");
 			
 			Map<String, Object> jobContext;
 			Response response = checkStatus(builder.get());
@@ -102,12 +101,12 @@ public class KubernetesHelper {
 				String projectName = (String) jobContext.get("projectName");
 				String commitHash = (String) jobContext.get("commitHash");
 				
-				System.out.println("Cloning source code...");
+				logger.info("Cloning source code...");
 				
 				Commandline git = new Commandline("git");
 				git.addArgs("init", ".");
 				git.workingDir(workspace);
-				git.execute(newStdoutPrinter(), newStderrPrinter()).checkReturnCode();
+				git.execute(newInfoLogger(), newErrorLogger()).checkReturnCode();
 				
 				git.clearArgs();
 				String extraHeader = KubernetesHelper.JOB_ID_HTTP_HEADER + ": " + jobId;
@@ -115,17 +114,17 @@ public class KubernetesHelper {
 						serverUrl + "/projects/" + projectName, "--force", "--quiet", 
 						/*"--depth=1",*/ commitHash);
 				git.workingDir(workspace);
-				git.execute(newStdoutPrinter(), newStderrPrinter()).checkReturnCode();
+				git.execute(newInfoLogger(), newErrorLogger()).checkReturnCode();
 				
 				git.clearArgs();
 				git.addArgs("checkout", "--quiet", commitHash);
 				git.workingDir(workspace);
-				git.execute(newStdoutPrinter(), newStderrPrinter()).checkReturnCode();
+				git.execute(newInfoLogger(), newErrorLogger()).checkReturnCode();
 			}	
 			
 			List<String> commands = (List<String>) jobContext.get("commands");
 			
-			System.out.println("Generating command script...");
+			logger.info("Generating command script...");
 			
 			if (KubernetesHelper.isWindows()) {
 				File scriptFile = new File(workspace, "onedev-job-commands.bat");
@@ -143,7 +142,7 @@ public class KubernetesHelper {
 				}
 			}
 			
-			System.out.println("Downloading job dependencies...");
+			logger.info("Downloading job dependencies...");
 			
 			target = client.target(serverUrl).path("rest/k8s/download-dependencies");
 			builder =  target.request(MediaType.APPLICATION_OCTET_STREAM);
@@ -185,7 +184,7 @@ public class KubernetesHelper {
 	
 	@SuppressWarnings("unchecked")
 	public static void sidecar(String serverUrl, String jobId, File workspace) {
-		System.out.println("Sending job outcomes to '" + serverUrl + "'...");
+		logger.info("Sending job outcomes to '" + serverUrl + "'...");
 		
 		Client client = ClientBuilder.newClient();
 		client.property(ClientProperties.REQUEST_ENTITY_PROCESSING, "CHUNKED");
@@ -203,7 +202,7 @@ public class KubernetesHelper {
 				}
 			}
 			
-			System.out.println("Retrieving job context...");
+			logger.info("Retrieving job context...");
 			
 			Map<String, Object> jobContext;
 			Response response = checkStatus(builder.get());
@@ -219,7 +218,7 @@ public class KubernetesHelper {
 			List<String> includes = (List<String>) ((List<?>)jobContext.get("collectFiles.includes")).get(1);
 			List<String> excludes = (List<String>) ((List<?>)jobContext.get("collectFiles.excludes")).get(1);
 			
-			System.out.println("Uploading job outcomes...");
+			logger.info("Uploading job outcomes...");
 			target = client.target(serverUrl).path("rest/k8s/upload-outcomes");
 
 			StreamingOutput os = new StreamingOutput() {
