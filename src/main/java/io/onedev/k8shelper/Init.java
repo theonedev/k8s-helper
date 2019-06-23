@@ -15,15 +15,20 @@ public class Init {
 	
 	public static void main(String[] args) {
 		try {
-			String serverUrl = Preconditions.checkNotNull(System.getenv(KubernetesHelper.ENV_SERVER_URL));
+			String serverUrl = System.getenv(KubernetesHelper.ENV_SERVER_URL);
+			if (serverUrl == null)
+				throw new RuntimeException("Environment '" + KubernetesHelper.ENV_SERVER_URL + "' is not defined");
 			serverUrl = StringUtils.stripEnd(serverUrl, "/");
 			String jobId = Preconditions.checkNotNull(System.getenv(KubernetesHelper.ENV_JOB_ID));
+			if (jobId == null)
+				throw new RuntimeException("Environment '" + KubernetesHelper.ENV_JOB_ID + "' is not defined");
+			
 			File workspace = KubernetesHelper.getWorkspace();
 			
 			KubernetesHelper.init(serverUrl, jobId, workspace);
 		} catch (Exception e) {
 			logger.error("Error executing init logic", e);
-			throw e;
+			System.exit(1);
 		}
 	}
 	
