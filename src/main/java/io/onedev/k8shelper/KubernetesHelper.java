@@ -6,11 +6,6 @@ import java.io.InputStream;
 import java.io.OutputStream;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.ExecutionException;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.Future;
-import java.util.concurrent.atomic.AtomicBoolean;
 
 import javax.ws.rs.client.Client;
 import javax.ws.rs.client.ClientBuilder;
@@ -42,11 +37,7 @@ public class KubernetesHelper {
 	
 	public static final String JOB_TOKEN_HTTP_HEADER = "X-ONEDEV-JOB-TOKEN";
 	
-	public static final String JOB_FINISH_LINE = "--ONEDEV-JOB-HAS-NOW-FINISHED--";
-	
 	private static final Logger logger = LoggerFactory.getLogger(KubernetesHelper.class);
-	
-	private static final ExecutorService EXECUTOR_SERVICE = Executors.newCachedThreadPool();
 	
 	public static File getWorkspace() {
 		if (isWindows()) 
@@ -90,10 +81,9 @@ public class KubernetesHelper {
 				File wrapperScriptFile = new File(workspace, ".onedev\\job-commands-wrapper.bat");
 				List<String> wrapperScriptContent = Lists.newArrayList(
 						"@echo off",
-						"cmd /c .onedev\\job-commands.bat>.onedev\\job-stdout 2>.onedev\\job-stderr", 
+						"cmd /c .onedev\\job-commands.bat", 
 						"set last_exit_code=%errorlevel%",
-						"echo " + JOB_FINISH_LINE + ">>.onedev\\job-stdout", 
-						"echo " + JOB_FINISH_LINE + ">>.onedev\\job-stderr", 
+						"copy nul .onedev\\job-finished", 
 						"exit %last_exit_code%");
 				FileUtils.writeLines(wrapperScriptFile, wrapperScriptContent, "\r\n");
 			} else {
@@ -101,10 +91,9 @@ public class KubernetesHelper {
 				FileUtils.writeLines(scriptFile, commands, "\n");
 				File wrapperScriptFile = new File(workspace, ".onedev/job-commands-wrapper.sh");
 				List<String> wrapperScriptContent = Lists.newArrayList(
-						"sh .onedev/job-commands.sh>.onedev/job-stdout 2>.onedev/job-stderr", 
+						"sh .onedev/job-commands.sh", 
 						"lastExitCode=\"$?\"", 
-						"echo " + JOB_FINISH_LINE + ">>.onedev/job-stdout",
-						"echo " + JOB_FINISH_LINE + ">>.onedev/job-stderr",
+						"touch .onedev/job-finished",
 						"exit $lastExitCode"
 						);
 				FileUtils.writeLines(wrapperScriptFile, wrapperScriptContent, "\n");
@@ -215,76 +204,15 @@ public class KubernetesHelper {
 		}
 	}
 
-	private static Future<?> tailJobLog(File workspace, boolean isStdout) {
-		return EXECUTOR_SERVICE.submit(new Runnable() {
-
-			@Override
-			public void run() {
-				File logFile;
-				if (isStdout)
-					logFile = new File(workspace, ".onedev/job-stdout");
-				else
-					logFile = new File(workspace, ".onedev/job-stderr");
-				while (!logFile.exists()) {
-					try {
-						Thread.sleep(1000);
-					} catch (InterruptedException e) {
-						throw new RuntimeException(e);
-					}
-				}
-				
-				Thread thread = Thread.currentThread();
-				Commandline tail = new Commandline("tail");
-				tail.addArgs("-n", "+1", "-f", logFile.getAbsolutePath());
-
-				AtomicBoolean interrupted = new AtomicBoolean(false);
-				try {
-					tail.execute(new LineConsumer() {
-			
-						@Override
-						public void consume(String line) {
-							if (line.equals(JOB_FINISH_LINE)) { 
-								thread.interrupt();
-								interrupted.set(true);
-							} else if (isStdout) {
-								logger.info(line);
-							} else {
-								logger.error(line);
-							}
-						}
-						
-					}, newErrorLogger()).checkReturnCode();
-					
-					throw new RuntimeException("Kubernetes: unexpected end of job log watching");
-				} catch (Exception e) {
-					if (!interrupted.get())
-						throw e;
-				}
-			}
-			
-		});
-	}
-	
 	@SuppressWarnings("unchecked")
 	public static void sidecar(String serverUrl, String jobToken, File workspace, boolean test) {
-		Future<?> stdoutLogFuture = tailJobLog(workspace, true);
-		Future<?> stderrLogFuture = tailJobLog(workspace, false);
-		
-		try {
-			while (true) {
-				if (stdoutLogFuture.isDone() && stderrLogFuture.isDone()) {
-					stdoutLogFuture.get();
-					stderrLogFuture.get();
-					break;
-				} else {
-					Thread.sleep(1000);
-				}
+		File logFile = new File(workspace, ".onedev/job-finished");
+		while (!logFile.exists()) {
+			try {
+				Thread.sleep(1000);
+			} catch (InterruptedException e) {
+				throw new RuntimeException(e);
 			}
-		} catch (InterruptedException|ExecutionException e) {
-			throw new RuntimeException(e);
-		} finally {
-			stdoutLogFuture.cancel(true);
-			stderrLogFuture.cancel(true);
 		}
 		
 		if (!test) {

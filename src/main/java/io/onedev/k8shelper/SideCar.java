@@ -21,7 +21,7 @@ public class SideCar {
 			KubernetesHelper.sidecar(serverUrl, jobToken, KubernetesHelper.getWorkspace(), args.length > 0);
 			System.exit(0);
 		} catch (Exception e) {
-			logger.error("Error executing sidecard logic", e);
+			logger.error("Error executing sidecar logic", e);
 			System.exit(1);
 		}
 	}

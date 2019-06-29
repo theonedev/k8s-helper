@@ -3,7 +3,7 @@
 <configuration scan="true">
 	<appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
 		<encoder class="ch.qos.logback.classic.encoder.PatternLayoutEncoder">
-			<pattern>%level: %msg%n</pattern>
+			<pattern>%msg%n</pattern>
 		</encoder>
 	</appender>
 	<logger name="io.onedev" level="INFO"/>	
