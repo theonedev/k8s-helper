@@ -1,11 +1,19 @@
 package io.onedev.k8shelper;
 
 import java.io.File;
+import java.io.FileFilter;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.nio.file.Files;
+import java.util.ArrayList;
+import java.util.Date;
+import java.util.HashMap;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import java.util.function.Consumer;
 
 import javax.ws.rs.client.Client;
 import javax.ws.rs.client.ClientBuilder;
@@ -16,15 +24,16 @@ import javax.ws.rs.core.MediaType;
 import javax.ws.rs.core.Response;
 import javax.ws.rs.core.StreamingOutput;
 
+import org.apache.commons.lang3.SerializationUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.glassfish.jersey.client.ClientProperties;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.common.collect.Lists;
 
 import io.onedev.commons.utils.FileUtils;
+import io.onedev.commons.utils.PathUtils;
 import io.onedev.commons.utils.TarUtils;
 import io.onedev.commons.utils.command.Commandline;
 import io.onedev.commons.utils.command.LineConsumer;
@@ -39,23 +48,34 @@ public class KubernetesHelper {
 	
 	private static final Logger logger = LoggerFactory.getLogger(KubernetesHelper.class);
 	
-	public static File getWorkspace() {
+	private static File getCIHome() {
 		if (isWindows()) 
-			return new File("C:\\onedev-workspace");
+			return new File("C:\\onedev-ci");
 		else 
-			return new File("/onedev-workspace");
+			return new File("/onedev-ci");
+	}
+	
+	private static File getCacheHome() {
+		if (isWindows())
+			return new File("C:\\onedev-cache");
+		else
+			return new File("/onedev-cache");
+	}
+	
+	private static File getWorkspace() {
+		return new File(getCIHome(), "workspace");
 	}
 	
 	public static boolean isWindows() {
 		return System.getProperty("os.name").toLowerCase().contains("windows");
 	}
 	
-	private static LineConsumer newDebugLogger() {
+	private static LineConsumer newInfoLogger() {
 		return new LineConsumer() {
 
 			@Override
 			public void consume(String line) {
-				logger.debug(line);
+				logger.info(line);
 			}
 			
 		};
@@ -72,31 +92,88 @@ public class KubernetesHelper {
 		};
 	}
 	
-	private static void generateCommandScript(File workspace, List<String> commands) {
-		try {
-			FileUtils.createDir(new File(workspace, ".onedev"));
-			if (isWindows()) {
-				File scriptFile = new File(workspace, ".onedev\\job-commands.bat");
-				FileUtils.writeLines(scriptFile, commands, "\r\n");
-				File wrapperScriptFile = new File(workspace, ".onedev\\job-commands-wrapper.bat");
-				List<String> wrapperScriptContent = Lists.newArrayList(
-						"@echo off",
-						"cmd /c .onedev\\job-commands.bat", 
-						"set last_exit_code=%errorlevel%",
-						"copy nul .onedev\\job-finished", 
-						"exit %last_exit_code%");
-				FileUtils.writeLines(wrapperScriptFile, wrapperScriptContent, "\r\n");
+	public static Map<CacheInstance, Date> getCacheInstances(File cacheHome) {
+		Map<CacheInstance, Date> instances = new HashMap<>();
+		
+		FileFilter dirFilter = new FileFilter() {
+
+			@Override
+			public boolean accept(File pathname) {
+				return pathname.isDirectory();
+			}
+			
+		}; 
+		for (File keyDir: cacheHome.listFiles(dirFilter)) {
+			for (File instanceDir: keyDir.listFiles(dirFilter)) 
+				instances.put(
+						new CacheInstance(instanceDir.getName(), keyDir.getName()), 
+						new Date(instanceDir.lastModified()));
+		}
+		
+		return instances;
+	}
+	
+	public static void preprocess(File cacheHome, Map<CacheInstance, String> cacheAllocations, Consumer<File> cacheCleaner) {
+		for (Iterator<Map.Entry<CacheInstance, String>> it = cacheAllocations.entrySet().iterator(); it.hasNext();) {
+			Map.Entry<CacheInstance, String> entry = it.next();
+			File cacheDirectory = entry.getKey().getDirectory(cacheHome);
+			if (entry.getValue() != null) {
+				if (!cacheDirectory.exists())
+					FileUtils.createDir(cacheDirectory);
+				File tempFile = null;
+				try {
+					tempFile = File.createTempFile("update-cache-last-modified", null, cacheDirectory);
+				} catch (IOException e) {
+					throw new RuntimeException(e);
+				} finally {
+					if (tempFile != null)
+						tempFile.delete();
+				}
 			} else {
-				File scriptFile = new File(workspace, ".onedev/job-commands.sh");
-				FileUtils.writeLines(scriptFile, commands, "\n");
-				File wrapperScriptFile = new File(workspace, ".onedev/job-commands-wrapper.sh");
+				if (cacheDirectory.exists()) {
+					cacheCleaner.accept(cacheDirectory);
+					FileUtils.deleteDir(cacheDirectory);
+				}
+				it.remove();
+			}
+		}
+	}
+	
+	private static void generateCommandScript(List<String> setupCommands, List<String> jobCommands) {
+		try {
+			File ciHome = getCIHome();
+			if (isWindows()) {
+				File setupScriptFile = new File(ciHome, "setup-commands.bat");
+				FileUtils.writeLines(setupScriptFile, setupCommands, "\r\n");
+				
+				File jobScriptFile = new File(ciHome, "job-commands.bat");
+				FileUtils.writeLines(jobScriptFile, jobCommands, "\r\n");
+				
+				File scriptFile = new File(ciHome, "commands.bat");
+				List<String> scriptContent = Lists.newArrayList(
+						"@echo off",
+						"cmd /c " + ciHome.getAbsolutePath() + "\\setup-commands.bat "
+								+ "&& cmd /c " + ciHome.getAbsolutePath() + "\\job-commands.bat", 
+						"set last_exit_code=%errorlevel%",
+						"copy nul " + ciHome.getAbsolutePath() + "\\job-finished", 
+						"exit %last_exit_code%");
+				FileUtils.writeLines(scriptFile, scriptContent, "\r\n");
+			} else {
+				File setupScriptFile = new File(ciHome, "setup-commands.sh");
+				FileUtils.writeLines(setupScriptFile, setupCommands, "\n");
+				
+				File jobScriptFile = new File(ciHome, "job-commands.sh");
+				FileUtils.writeLines(jobScriptFile, jobCommands, "\n");
+				
+				File scriptFile = new File(ciHome, "commands.sh");
 				List<String> wrapperScriptContent = Lists.newArrayList(
-						"sh .onedev/job-commands.sh", 
+						"sh " + ciHome.getAbsolutePath() + "/setup-commands.sh "
+								+ "&& sh " + ciHome.getAbsolutePath() + "/job-commands.sh", 
 						"lastExitCode=\"$?\"", 
-						"touch .onedev/job-finished",
+						"touch " + ciHome.getAbsolutePath() + "/job-finished",
 						"exit $lastExitCode"
 						);
-				FileUtils.writeLines(wrapperScriptFile, wrapperScriptContent, "\n");
+				FileUtils.writeLines(scriptFile, wrapperScriptContent, "\n");
 			}
 		} catch (IOException e) {
 			throw new RuntimeException(e);
@@ -104,68 +181,133 @@ public class KubernetesHelper {
 	}
 	
 	@SuppressWarnings("unchecked")
-	public static void init(String serverUrl, String jobToken, File workspace, boolean test) {
+	public static void init(String serverUrl, String jobToken, boolean test) {
 		Client client = ClientBuilder.newClient();
 		try {
+			File cacheHome = getCacheHome();
 			if (test) {
 				logger.info("Testing server connectivity with '{}'...", serverUrl);
 				WebTarget target = client.target(serverUrl).path("rest/k8s/test");
-				Invocation.Builder builder =  target.request(MediaType.APPLICATION_JSON);
+				Invocation.Builder builder =  target.request();
 				builder.header(KubernetesHelper.JOB_TOKEN_HTTP_HEADER, jobToken);
 				checkStatus(builder.get());
-				generateCommandScript(workspace, Lists.newArrayList("echo hello from container"));
+				File tempFile = null;
+				try {
+					tempFile = File.createTempFile("test", null, cacheHome);
+				} catch (IOException e) {
+					throw new RuntimeException(e);
+				} finally {
+					if (tempFile != null)
+						tempFile.delete();
+				}
+				generateCommandScript(Lists.newArrayList(), Lists.newArrayList("echo hello from container"));
 			} else {
 				WebTarget target = client.target(serverUrl).path("rest/k8s/job-context");
-				Invocation.Builder builder =  target.request(MediaType.APPLICATION_JSON);
+				Invocation.Builder builder =  target.request();
 				builder.header(KubernetesHelper.JOB_TOKEN_HTTP_HEADER, jobToken);
 				
-				logger.debug("Retrieving job context from '{}'...", serverUrl);
+				logger.info("Retrieving job context from '{}'...", serverUrl);
 				
 				Map<String, Object> jobContext;
 				Response response = checkStatus(builder.get());
 				try {
-					String json = response.readEntity(String.class);
-					jobContext = new ObjectMapper().readValue(json, Map.class);
-				} catch (IOException e) {
-					throw new RuntimeException(e);
+					jobContext = SerializationUtils.deserialize(response.readEntity(byte[].class));
 				} finally {
 					response.close();
 				}
 				
-				boolean cloneSource = (boolean) jobContext.get("cloneSource");
-				if (cloneSource) {
+				File workspace = getWorkspace();
+				File workspaceCache = null;
+				
+				logger.info("Allocating job caches from '{}'...", serverUrl);
+				target = client.target(serverUrl).path("rest/k8s/allocate-job-caches");
+				builder =  target.request();
+				builder.header(KubernetesHelper.JOB_TOKEN_HTTP_HEADER, jobToken);
+				Map<CacheInstance, Date> cacheInstances = getCacheInstances(cacheHome);
+				byte[] cacheAllocationRequestBytes = SerializationUtils.serialize(
+						new CacheAllocationRequest(new Date(), cacheInstances));
+				Map<CacheInstance, String> cacheAllocations;
+				try {
+					response = builder.post(Entity.entity(cacheAllocationRequestBytes, MediaType.APPLICATION_OCTET_STREAM));
+					checkStatus(response);
+					cacheAllocations = SerializationUtils.deserialize(response.readEntity(byte[].class));
+				} finally {
+					response.close();
+				}
+				
+				preprocess(cacheHome, cacheAllocations, new Consumer<File>() {
+
+					@Override
+					public void accept(File dir) {
+						FileUtils.cleanDir(dir);
+					}
+					
+				});
+				for (Map.Entry<CacheInstance, String> entry: cacheAllocations.entrySet()) {
+					if (PathUtils.isCurrent(entry.getValue())) {
+						workspaceCache = entry.getKey().getDirectory(getCacheHome());
+						break;
+					}
+				}
+				if (workspaceCache != null) {
+					try {
+						Files.createSymbolicLink(workspace.toPath(), workspaceCache.toPath());
+					} catch (IOException e) {
+						throw new RuntimeException(e);
+					}
+				} else {
+					FileUtils.createDir(workspace);
+				}
+				boolean retrieveSource = (boolean) jobContext.get("retrieveSource");
+				if (retrieveSource) {
 					String projectName = (String) jobContext.get("projectName");
 					String commitHash = (String) jobContext.get("commitHash");
 					
 					String projectUrl = serverUrl + "/projects/" + projectName;
-					logger.info("Cloning source code from '{}'...", projectUrl);
-					
+					logger.info("Retrieving source code from '{}'...", projectUrl);
+
 					Commandline git = new Commandline("git");
-					git.addArgs("init", ".");
-					git.workingDir(workspace);
-					git.execute(newDebugLogger(), newErrorLogger()).checkReturnCode();
-					
-					git.clearArgs();
+					if (!new File(workspace, ".git").exists()) {
+						git.addArgs("init", ".");
+						git.workingDir(workspace);
+						git.execute(newInfoLogger(), newErrorLogger()).checkReturnCode();
+						git.clearArgs();
+					}								
 					String extraHeader = KubernetesHelper.JOB_TOKEN_HTTP_HEADER + ": " + jobToken;
 					git.addArgs("-c", "http.extraHeader=" + extraHeader, "fetch", projectUrl, "--force", "--quiet", 
-							/*"--depth=1",*/ commitHash);
+							/*"--depth=1", */commitHash);
 					git.workingDir(workspace);
-					git.execute(newDebugLogger(), newErrorLogger()).checkReturnCode();
+					git.execute(newInfoLogger(), newErrorLogger()).checkReturnCode();
 					
 					git.clearArgs();
 					git.addArgs("checkout", "--quiet", commitHash);
 					git.workingDir(workspace);
-					git.execute(newDebugLogger(), newErrorLogger()).checkReturnCode();
+					git.execute(newInfoLogger(), newErrorLogger()).checkReturnCode();
 				}	
+
+				List<String> setupCommands = new ArrayList<>();
+				for (Map.Entry<CacheInstance, String> entry: cacheAllocations.entrySet()) {
+					if (!PathUtils.isCurrent(entry.getValue())) {
+						String link = PathUtils.resolve(workspace.getAbsolutePath(), entry.getValue());
+						File linkTarget = entry.getKey().getDirectory(cacheHome);
+						if (isWindows()) {
+							setupCommands.add(String.format("rmdir /q /s \"%s\"", link));							
+							setupCommands.add(String.format("mklink /D \"%s\" \"%s\"", link, linkTarget.getAbsolutePath()));
+						} else {
+							setupCommands.add(String.format("rm -rf \"%s\"", link));
+							setupCommands.add(String.format("ln -s \"%s\" \"%s\"", linkTarget.getAbsolutePath(), link));
+						}
+					}
+				}
 				
-				List<String> commands = (List<String>) ((List<?>)jobContext.get("commands")).get(1);
+				List<String> jobCommands = (List<String>) jobContext.get("commands");
 				
-				generateCommandScript(workspace, commands);
+				generateCommandScript(setupCommands, jobCommands);
 				
 				logger.info("Downloading job dependencies from '{}'...", serverUrl);
 				
 				target = client.target(serverUrl).path("rest/k8s/download-dependencies");
-				builder =  target.request(MediaType.APPLICATION_OCTET_STREAM);
+				builder =  target.request();
 				builder.header(KubernetesHelper.JOB_TOKEN_HTTP_HEADER, jobToken);
 				response = checkStatus(builder.get());
 				try {
@@ -205,9 +347,9 @@ public class KubernetesHelper {
 	}
 
 	@SuppressWarnings("unchecked")
-	public static void sidecar(String serverUrl, String jobToken, File workspace, boolean test) {
-		File logFile = new File(workspace, ".onedev/job-finished");
-		while (!logFile.exists()) {
+	public static void sidecar(String serverUrl, String jobToken, boolean test) {
+		File finishedFile = new File(getCIHome(), "job-finished");
+		while (!finishedFile.exists()) {
 			try {
 				Thread.sleep(1000);
 			} catch (InterruptedException e) {
@@ -222,22 +364,19 @@ public class KubernetesHelper {
 			client.property(ClientProperties.REQUEST_ENTITY_PROCESSING, "CHUNKED");
 			try {
 				WebTarget target = client.target(serverUrl).path("rest/k8s/job-context");
-				Invocation.Builder builder =  target.request(MediaType.APPLICATION_JSON);
+				Invocation.Builder builder =  target.request();
 				builder.header(KubernetesHelper.JOB_TOKEN_HTTP_HEADER, jobToken);
 				
 				Map<String, Object> jobContext;
 				Response response = checkStatus(builder.get());
 				try {
-					String json = response.readEntity(String.class);
-					jobContext = new ObjectMapper().readValue(json, Map.class);
-				} catch (IOException e) {
-					throw new RuntimeException(e);
+					jobContext = SerializationUtils.deserialize(response.readEntity(byte[].class));
 				} finally {
 					response.close();
 				}
 				
-				List<String> includes = (List<String>) ((List<?>)jobContext.get("collectFiles.includes")).get(1);
-				List<String> excludes = (List<String>) ((List<?>)jobContext.get("collectFiles.excludes")).get(1);
+				Set<String> includes = (Set<String>) jobContext.get("collectFiles.includes");
+				Set<String> excludes = (Set<String>) jobContext.get("collectFiles.excludes");
 				
 				target = client.target(serverUrl).path("rest/k8s/upload-outcomes");
 
@@ -245,7 +384,7 @@ public class KubernetesHelper {
 
 					@Override
 				   public void write(OutputStream os) throws IOException {
-						TarUtils.tar(workspace, includes, excludes, os);
+						TarUtils.tar(getWorkspace(), includes, excludes, os);
 						os.flush();
 				   }				   
 				   

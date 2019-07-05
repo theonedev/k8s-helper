@@ -18,7 +18,7 @@ public class Init {
 			if (jobToken == null)
 				throw new RuntimeException("Environment '" + KubernetesHelper.ENV_JOB_TOKEN + "' is not defined");
 			
-			KubernetesHelper.init(serverUrl, jobToken, KubernetesHelper.getWorkspace(), args.length > 0);
+			KubernetesHelper.init(serverUrl, jobToken, args.length > 0);
 			System.exit(0);
 		} catch (Exception e) {
 			logger.error("Error executing init logic", e);

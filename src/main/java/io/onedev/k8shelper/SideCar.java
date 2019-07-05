@@ -18,7 +18,7 @@ public class SideCar {
 			if (jobToken == null)
 				throw new RuntimeException("Environment '" + KubernetesHelper.ENV_JOB_TOKEN + "' is not defined");
 			
-			KubernetesHelper.sidecar(serverUrl, jobToken, KubernetesHelper.getWorkspace(), args.length > 0);
+			KubernetesHelper.sidecar(serverUrl, jobToken, args.length > 0);
 			System.exit(0);
 		} catch (Exception e) {
 			logger.error("Error executing sidecar logic", e);
