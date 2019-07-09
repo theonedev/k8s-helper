@@ -5,10 +5,13 @@ import java.io.FileFilter;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.io.Serializable;
 import java.nio.file.Files;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Date;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
@@ -332,7 +335,7 @@ public class KubernetesHelper {
 	
 	private static Response checkStatus(Response response) {
 		int status = response.getStatus();
-		if (status != 200) {
+		if (status != 200 && status != 204) {
 			String errorMessage = response.readEntity(String.class);
 			if (StringUtils.isNotBlank(errorMessage)) {
 				throw new RuntimeException(String.format("Http request failed (status code: %d, error message: %s)", 
@@ -358,11 +361,11 @@ public class KubernetesHelper {
 		}
 		
 		if (!test) {
-			logger.info("Uploading job outcomes to '{}'...", serverUrl);
-			
 			Client client = ClientBuilder.newClient();
 			client.property(ClientProperties.REQUEST_ENTITY_PROCESSING, "CHUNKED");
 			try {
+				logger.info("Uploading job outcomes to '{}'...", serverUrl);
+				
 				WebTarget target = client.target(serverUrl).path("rest/k8s/job-context");
 				Invocation.Builder builder =  target.request();
 				builder.header(KubernetesHelper.JOB_TOKEN_HTTP_HEADER, jobToken);
@@ -394,6 +397,18 @@ public class KubernetesHelper {
 				try {
 					response = builder.post(Entity.entity(os, MediaType.APPLICATION_OCTET_STREAM_TYPE));
 					checkStatus(response);
+				} finally {
+					response.close();
+				}
+				
+				logger.info("Reporting job caches to '{}'...", serverUrl);
+				target = client.target(serverUrl).path("rest/k8s/report-job-caches");
+				builder =  target.request();
+				builder.header(KubernetesHelper.JOB_TOKEN_HTTP_HEADER, jobToken);
+				Collection<CacheInstance> cacheInstances = new HashSet<>(getCacheInstances(getCacheHome()).keySet());
+				byte[] cacheInstanceBytes = SerializationUtils.serialize((Serializable) cacheInstances);
+				try {
+					checkStatus(builder.post(Entity.entity(cacheInstanceBytes, MediaType.APPLICATION_OCTET_STREAM)));
 				} finally {
 					response.close();
 				}
