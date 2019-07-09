@@ -60,9 +60,9 @@ public class KubernetesHelper {
 	
 	private static File getCacheHome() {
 		if (isWindows())
-			return new File("C:\\onedev-cache");
+			return new File("C:\\onedev-ci\\cache");
 		else
-			return new File("/onedev-cache");
+			return new File("/onedev-ci/cache");
 	}
 	
 	private static File getWorkspace() {
@@ -155,6 +155,7 @@ public class KubernetesHelper {
 				File scriptFile = new File(ciHome, "commands.bat");
 				List<String> scriptContent = Lists.newArrayList(
 						"@echo off",
+						"cd " + getWorkspace().getAbsolutePath(),
 						"cmd /c " + ciHome.getAbsolutePath() + "\\setup-commands.bat "
 								+ "&& cmd /c " + ciHome.getAbsolutePath() + "\\job-commands.bat", 
 						"set last_exit_code=%errorlevel%",
@@ -170,6 +171,7 @@ public class KubernetesHelper {
 				
 				File scriptFile = new File(ciHome, "commands.sh");
 				List<String> wrapperScriptContent = Lists.newArrayList(
+						"cd " + getWorkspace().getAbsolutePath(),
 						"sh " + ciHome.getAbsolutePath() + "/setup-commands.sh "
 								+ "&& sh " + ciHome.getAbsolutePath() + "/job-commands.sh", 
 						"lastExitCode=\"$?\"", 
