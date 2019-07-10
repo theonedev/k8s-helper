@@ -155,9 +155,9 @@ public class KubernetesHelper {
 				File scriptFile = new File(ciHome, "commands.bat");
 				List<String> scriptContent = Lists.newArrayList(
 						"@echo off",
-						"cd " + getWorkspace().getAbsolutePath(),
-						"cmd /c " + ciHome.getAbsolutePath() + "\\setup-commands.bat "
-								+ "&& cmd /c " + ciHome.getAbsolutePath() + "\\job-commands.bat", 
+						"cd " + getWorkspace().getAbsolutePath() 
+								+ " && cmd /c " + ciHome.getAbsolutePath() + "\\setup-commands.bat"
+								+ " && cmd /c " + ciHome.getAbsolutePath() + "\\job-commands.bat", 
 						"set last_exit_code=%errorlevel%",
 						"copy nul " + ciHome.getAbsolutePath() + "\\job-finished", 
 						"exit %last_exit_code%");
@@ -171,9 +171,9 @@ public class KubernetesHelper {
 				
 				File scriptFile = new File(ciHome, "commands.sh");
 				List<String> wrapperScriptContent = Lists.newArrayList(
-						"cd " + getWorkspace().getAbsolutePath(),
-						"sh " + ciHome.getAbsolutePath() + "/setup-commands.sh "
-								+ "&& sh " + ciHome.getAbsolutePath() + "/job-commands.sh", 
+						"cd " + getWorkspace().getAbsolutePath() 
+								+ " && sh " + ciHome.getAbsolutePath() + "/setup-commands.sh"
+								+ " && sh " + ciHome.getAbsolutePath() + "/job-commands.sh", 
 						"lastExitCode=\"$?\"", 
 						"touch " + ciHome.getAbsolutePath() + "/job-finished",
 						"exit $lastExitCode"
@@ -205,13 +205,14 @@ public class KubernetesHelper {
 					if (tempFile != null)
 						tempFile.delete();
 				}
+				FileUtils.createDir(getWorkspace());
 				generateCommandScript(Lists.newArrayList(), Lists.newArrayList("echo hello from container"));
 			} else {
 				WebTarget target = client.target(serverUrl).path("rest/k8s/job-context");
 				Invocation.Builder builder =  target.request();
 				builder.header(KubernetesHelper.JOB_TOKEN_HTTP_HEADER, jobToken);
 				
-				logger.info("Retrieving job context from '{}'...", serverUrl);
+				logger.info("Retrieving job context from {}...", serverUrl);
 				
 				Map<String, Object> jobContext;
 				Response response = checkStatus(builder.get());
@@ -224,7 +225,7 @@ public class KubernetesHelper {
 				File workspace = getWorkspace();
 				File workspaceCache = null;
 				
-				logger.info("Allocating job caches from '{}'...", serverUrl);
+				logger.info("Allocating job caches from {}...", serverUrl);
 				target = client.target(serverUrl).path("rest/k8s/allocate-job-caches");
 				builder =  target.request();
 				builder.header(KubernetesHelper.JOB_TOKEN_HTTP_HEADER, jobToken);
@@ -269,7 +270,7 @@ public class KubernetesHelper {
 					String commitHash = (String) jobContext.get("commitHash");
 					
 					String projectUrl = serverUrl + "/projects/" + projectName;
-					logger.info("Retrieving source code from '{}'...", projectUrl);
+					logger.info("Retrieving source code from {}...", projectUrl);
 
 					Commandline git = new Commandline("git");
 					if (!new File(workspace, ".git").exists()) {
@@ -309,7 +310,7 @@ public class KubernetesHelper {
 				
 				generateCommandScript(setupCommands, jobCommands);
 				
-				logger.info("Downloading job dependencies from '{}'...", serverUrl);
+				logger.info("Downloading job dependencies from {}...", serverUrl);
 				
 				target = client.target(serverUrl).path("rest/k8s/download-dependencies");
 				builder =  target.request();
