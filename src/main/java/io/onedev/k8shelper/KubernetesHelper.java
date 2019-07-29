@@ -58,6 +58,13 @@ public class KubernetesHelper {
 			return new File("/onedev-ci");
 	}
 	
+	private static File getTrustCertsHome() {
+		if (isWindows()) 
+			return new File("C:\\onedev-ci\\trust-certs");
+		else 
+			return new File("/onedev-ci/trust-certs");
+	}
+	
 	private static File getCacheHome() {
 		if (isWindows())
 			return new File("C:\\onedev-ci\\cache");
@@ -185,8 +192,25 @@ public class KubernetesHelper {
 		}
 	}
 	
+	private static void installTrustCerts() {
+		File trustCertsHome = getTrustCertsHome();
+		if (trustCertsHome.exists()) {
+			String keystore = System.getProperty("java.home") + "/lib/security/cacerts";
+			for (File each: trustCertsHome.listFiles()) {
+				if (each.isFile()) {
+					Commandline keytool = new Commandline("keytool");
+					keytool.addArgs("-import", "-alias", each.getName(), "-file", each.getAbsolutePath(), 
+							"-keystore", keystore, "-storePass", "changeit", "-noprompt");
+					keytool.execute(newInfoLogger(), newErrorLogger()).checkReturnCode();
+				}
+			}
+		}
+	}
+	
 	@SuppressWarnings("unchecked")
 	public static void init(String serverUrl, String jobToken, boolean test) {
+		installTrustCerts();
+		
 		Client client = ClientBuilder.newClient();
 		try {
 			File cacheHome = getCacheHome();
@@ -280,7 +304,12 @@ public class KubernetesHelper {
 						git.clearArgs();
 					}								
 					String extraHeader = KubernetesHelper.JOB_TOKEN_HTTP_HEADER + ": " + jobToken;
-					git.addArgs("-c", "http.extraHeader=" + extraHeader, "fetch", projectUrl, "--force", "--quiet", 
+					git.addArgs("-c", "http.extraHeader=" + extraHeader);
+					
+					File trustCertsHome = getTrustCertsHome();
+					if (trustCertsHome.exists())
+						git.addArgs("-c", "http.sslCAPath=" + trustCertsHome.getAbsolutePath());
+					git.addArgs("fetch", projectUrl, "--force", "--quiet", 
 							/*"--depth=1", */commitHash);
 					git.workingDir(workspace);
 					git.execute(newInfoLogger(), newErrorLogger()).checkReturnCode();
@@ -354,6 +383,8 @@ public class KubernetesHelper {
 
 	@SuppressWarnings("unchecked")
 	public static void sidecar(String serverUrl, String jobToken, boolean test) {
+		installTrustCerts();
+		
 		File finishedFile = new File(getCIHome(), "job-finished");
 		while (!finishedFile.exists()) {
 			try {
