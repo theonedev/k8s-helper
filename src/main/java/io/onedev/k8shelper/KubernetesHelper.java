@@ -6,6 +6,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.io.Serializable;
+import java.net.URLEncoder;
 import java.nio.file.Files;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -29,10 +30,12 @@ import javax.ws.rs.core.StreamingOutput;
 
 import org.apache.commons.lang3.SerializationUtils;
 import org.apache.commons.lang3.StringUtils;
+import org.apache.commons.lang3.SystemUtils;
 import org.glassfish.jersey.client.ClientProperties;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import com.google.common.base.Charsets;
 import com.google.common.collect.Lists;
 
 import io.onedev.commons.utils.FileUtils;
@@ -96,7 +99,13 @@ public class KubernetesHelper {
 
 			@Override
 			public void consume(String line) {
-				logger.error(line);
+				if (line.contains("Submodule") && line.contains("registered for path")
+						|| line.startsWith("From ") || line.startsWith(" * branch")
+						|| line.startsWith(" +") && line.contains("->")) {
+					logger.info(line);
+				} else {
+					logger.error(line);
+				}
 			}
 			
 		};
@@ -296,28 +305,82 @@ public class KubernetesHelper {
 					String projectUrl = serverUrl + "/projects/" + projectName;
 					logger.info("Retrieving source code from {}...", projectUrl);
 
+					LineConsumer infoLogger = newInfoLogger();
+					LineConsumer errorLogger = newErrorLogger();
 					Commandline git = new Commandline("git");
-					if (!new File(workspace, ".git").exists()) {
-						git.addArgs("init", ".");
-						git.workingDir(workspace);
-						git.execute(newInfoLogger(), newErrorLogger()).checkReturnCode();
-						git.clearArgs();
-					}								
+					git.workingDir(workspace);
+					
+					git.addArgs("config", "--global", "credential.modalprompt", "false");
+					git.execute(infoLogger, errorLogger).checkReturnCode();
+					
+					// clear credential.helper list to remove possible Windows credential manager
+					git.clearArgs();
+					if (SystemUtils.IS_OS_WINDOWS)
+						git.addArgs("config", "--global", "credential.helper", "\"\"");
+					else
+						git.addArgs("config", "--global", "credential.helper", "");
+					git.execute(infoLogger, errorLogger).checkReturnCode();
+					
+					git.clearArgs();
+					git.addArgs("config", "--global", "--add", "credential.helper", "store");
+					git.execute(infoLogger, errorLogger).checkReturnCode();
+					
+					git.clearArgs();
+					git.addArgs("config", "--global", "credential.useHttpPath", "true");
+					git.execute(infoLogger, errorLogger).checkReturnCode();
+
+					git.clearArgs();
 					String extraHeader = KubernetesHelper.JOB_TOKEN_HTTP_HEADER + ": " + jobToken;
-					git.addArgs("-c", "http.extraHeader=" + extraHeader);
+					git.addArgs("config", "--global", "http.extraHeader", extraHeader);
+					git.execute(infoLogger, errorLogger).checkReturnCode();
 					
 					File trustCertsHome = getTrustCertsHome();
-					if (trustCertsHome.exists())
-						git.addArgs("-c", "http.sslCAPath=" + trustCertsHome.getAbsolutePath());
+					if (trustCertsHome.exists()) {
+						git.clearArgs();
+						git.addArgs("config", "--global", "http.sslCAPath", trustCertsHome.getAbsolutePath());
+						git.execute(infoLogger, errorLogger).checkReturnCode();
+					}
+					
+					List<String> submoduleCredentials = new ArrayList<>();
+					for (Map<String, String> map: (List<Map<String, String>>)jobContext.get("submoduleCredentials")) {
+						String url = map.get("url");
+						String userName = URLEncoder.encode(map.get("userName"), Charsets.UTF_8.name());
+						String password = URLEncoder.encode(map.get("password"), Charsets.UTF_8.name());
+						if (url.startsWith("http://")) {
+							submoduleCredentials.add("http://" + userName + ":" + password 
+									+ "@" + url.substring("http://".length()).replace(":", "%3a"));
+						} else {
+							submoduleCredentials.add("https://" + userName + ":" + password 
+									+ "@" + url.substring("https://".length()).replace(":", "%3a"));
+						}
+					}
+					FileUtils.writeLines(new File("/root/.git-credentials"), submoduleCredentials, "\n");
+					
+					git.clearArgs();
+					if (!new File(workspace, ".git").exists()) {
+						git.addArgs("init", ".");
+						git.execute(infoLogger, errorLogger).checkReturnCode();
+						git.clearArgs();
+					}								
+					
 					git.addArgs("fetch", projectUrl, "--force", "--quiet", 
-							/*"--depth=1", */commitHash);
-					git.workingDir(workspace);
-					git.execute(newInfoLogger(), newErrorLogger()).checkReturnCode();
+							"--depth=1", commitHash);
+					git.execute(infoLogger, errorLogger).checkReturnCode();
 					
 					git.clearArgs();
 					git.addArgs("checkout", "--quiet", commitHash);
-					git.workingDir(workspace);
-					git.execute(newInfoLogger(), newErrorLogger()).checkReturnCode();
+					git.execute(infoLogger, errorLogger).checkReturnCode();
+					
+					// deinit submodules in case submodule url is changed
+					git.clearArgs();
+					git.addArgs("submodule", "deinit", "--all", "--force", "--quiet");
+					git.execute(infoLogger, errorLogger).checkReturnCode();
+					
+					git.clearArgs();
+					git.addArgs("submodule", "update", "--init", "--recursive", "--force", "--quiet", "--depth=1");
+					git.execute(infoLogger, errorLogger).checkReturnCode();
+					
+					FileUtils.deleteFile(new File("/root/.git-credentials"));
 				}	
 
 				List<String> setupCommands = new ArrayList<>();
@@ -360,6 +423,8 @@ public class KubernetesHelper {
 				}
 				logger.info("Job workspace initialized");
 			}
+		} catch (IOException e) {
+			throw new RuntimeException(e);
 		} finally {
 			client.close();
 		}
