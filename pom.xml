@@ -10,7 +10,7 @@
 		<version>1.0.3</version>
 	</parent>
 	<artifactId>k8s-helper</artifactId>
-	<version>1.0.6</version>
+	<version>1.0.7</version>
 	<build>
 		<plugins>
 			<plugin>
@@ -32,6 +32,12 @@
 				</executions>
 			</plugin>
 		</plugins>
+		<resources>
+			<resource>
+				<directory>src/main/resources</directory>
+				<filtering>true</filtering>
+			</resource>
+		</resources>
 	</build>
 	<repositories>
 		<repository>
@@ -51,6 +57,11 @@
 	</repositories>
 	<dependencies>
 		<dependency>
+			<groupId>javax.activation</groupId>
+			<artifactId>activation</artifactId>
+			<version>1.1.1</version>
+		</dependency>
+		<dependency>
 			<groupId>io.onedev</groupId>
 			<artifactId>commons-utils</artifactId>
 			<version>${commons.version}</version>
@@ -66,13 +77,13 @@
 			<version>${jersey.version}</version>
 		</dependency>
 		<dependency>
-		    <groupId>org.glassfish.jersey.media</groupId>
-		    <artifactId>jersey-media-json-jackson</artifactId>
-		    <version>${jersey.version}</version>
+			<groupId>org.glassfish.jersey.media</groupId>
+			<artifactId>jersey-media-json-jackson</artifactId>
+			<version>${jersey.version}</version>
 		</dependency>
 	</dependencies>
 	<properties>
-		<commons.version>1.1.8</commons.version>
+		<commons.version>1.1.9</commons.version>
 		<jersey.version>2.26</jersey.version>
 	</properties>
 </project>

@@ -7,6 +7,7 @@ import java.io.InputStream;
 import java.io.OutputStream;
 import java.io.Serializable;
 import java.net.URLEncoder;
+import java.nio.charset.Charset;
 import java.nio.file.Files;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -51,6 +52,8 @@ public class KubernetesHelper {
 	public static final String ENV_JOB_TOKEN = "ONEDEV_JOB_TOKEN";
 	
 	public static final String JOB_TOKEN_HTTP_HEADER = "X-ONEDEV-JOB-TOKEN";
+	
+	public static final String LOG_END_MESSAGE = "===== End of OneDev K8s Helper Log =====";
 	
 	private static final Logger logger = LoggerFactory.getLogger(KubernetesHelper.class);
 	
@@ -175,7 +178,8 @@ public class KubernetesHelper {
 								+ " && cmd /c " + ciHome.getAbsolutePath() + "\\setup-commands.bat"
 								+ " && cmd /c " + ciHome.getAbsolutePath() + "\\job-commands.bat", 
 						"set last_exit_code=%errorlevel%",
-						"copy nul " + ciHome.getAbsolutePath() + "\\job-finished", 
+						"copy nul > " + ciHome.getAbsolutePath() + "\\job-finished",
+						"echo " + LOG_END_MESSAGE,
 						"exit %last_exit_code%");
 				FileUtils.writeLines(scriptFile, scriptContent, "\r\n");
 			} else {
@@ -192,6 +196,7 @@ public class KubernetesHelper {
 								+ " && sh " + ciHome.getAbsolutePath() + "/job-commands.sh", 
 						"lastExitCode=\"$?\"", 
 						"touch " + ciHome.getAbsolutePath() + "/job-finished",
+						"echo " + LOG_END_MESSAGE,
 						"exit $lastExitCode"
 						);
 				FileUtils.writeLines(scriptFile, wrapperScriptContent, "\n");
@@ -210,7 +215,16 @@ public class KubernetesHelper {
 					Commandline keytool = new Commandline("keytool");
 					keytool.addArgs("-import", "-alias", each.getName(), "-file", each.getAbsolutePath(), 
 							"-keystore", keystore, "-storePass", "changeit", "-noprompt");
-					keytool.execute(newInfoLogger(), newErrorLogger()).checkReturnCode();
+					
+					keytool.execute(newInfoLogger(), new LineConsumer() {
+
+						@Override
+						public void consume(String line) {
+							if (!line.contains("Warning: use -cacerts option to access cacerts keystore"))
+								logger.error(line);
+						}
+						
+					}).checkReturnCode();
 				}
 			}
 		}
@@ -239,7 +253,10 @@ public class KubernetesHelper {
 						tempFile.delete();
 				}
 				FileUtils.createDir(getWorkspace());
-				generateCommandScript(Lists.newArrayList(), Lists.newArrayList("echo hello from container"));
+				if (isWindows())
+					generateCommandScript(Lists.newArrayList(), Lists.newArrayList("@echo off", "echo hello from container"));
+				else
+					generateCommandScript(Lists.newArrayList(), Lists.newArrayList("echo hello from container"));
 			} else {
 				WebTarget target = client.target(serverUrl).path("rest/k8s/job-context");
 				Invocation.Builder builder =  target.request();
@@ -336,8 +353,16 @@ public class KubernetesHelper {
 					
 					File trustCertsHome = getTrustCertsHome();
 					if (trustCertsHome.exists()) {
+						List<String> trustCertContent = new ArrayList<>();
+						for (File file: trustCertsHome.listFiles()) {
+							if (file.isFile()) 
+								trustCertContent.addAll(FileUtils.readLines(file, Charset.defaultCharset()));
+						}
+						
+						File trustCertFile = new File(getCIHome(), "trust-cert.pem");
+						FileUtils.writeLines(trustCertFile, trustCertContent, "\n");
 						git.clearArgs();
-						git.addArgs("config", "--global", "http.sslCAPath", trustCertsHome.getAbsolutePath());
+						git.addArgs("config", "--global", "http.sslCAInfo", trustCertFile.getAbsolutePath());
 						git.execute(infoLogger, errorLogger).checkReturnCode();
 					}
 					
@@ -354,7 +379,13 @@ public class KubernetesHelper {
 									+ "@" + url.substring("https://".length()).replace(":", "%3a"));
 						}
 					}
-					FileUtils.writeLines(new File("/root/.git-credentials"), submoduleCredentials, "\n");
+					
+					File credentialsFile;
+					if (SystemUtils.IS_OS_WINDOWS)
+						credentialsFile = new File("C:\\Users\\ContainerAdministrator\\.git-credentials");
+					else
+						credentialsFile = new File("/root/.git-credentials");
+					FileUtils.writeLines(credentialsFile, submoduleCredentials, "\n");
 					
 					git.clearArgs();
 					if (!new File(workspace, ".git").exists()) {
@@ -374,13 +405,23 @@ public class KubernetesHelper {
 					// deinit submodules in case submodule url is changed
 					git.clearArgs();
 					git.addArgs("submodule", "deinit", "--all", "--force", "--quiet");
-					git.execute(infoLogger, errorLogger).checkReturnCode();
+					git.execute(infoLogger, new LineConsumer() {
+
+						@Override
+						public void consume(String line) {
+							if (!line.contains("error: could not lock config file") && 
+									!line.contains("warning: Could not unset core.worktree setting in submodule")) {
+								errorLogger.consume(line);
+							}
+						}
+						
+					}).checkReturnCode();
 					
 					git.clearArgs();
 					git.addArgs("submodule", "update", "--init", "--recursive", "--force", "--quiet", "--depth=1");
 					git.execute(infoLogger, errorLogger).checkReturnCode();
 					
-					FileUtils.deleteFile(new File("/root/.git-credentials"));
+					FileUtils.deleteFile(credentialsFile);
 				}	
 
 				List<String> setupCommands = new ArrayList<>();
@@ -389,6 +430,7 @@ public class KubernetesHelper {
 						String link = PathUtils.resolve(workspace.getAbsolutePath(), entry.getValue());
 						File linkTarget = entry.getKey().getDirectory(cacheHome);
 						if (isWindows()) {
+							setupCommands.add("@echo off");							
 							setupCommands.add(String.format("rmdir /q /s \"%s\"", link));							
 							setupCommands.add(String.format("mklink /D \"%s\" \"%s\"", link, linkTarget.getAbsolutePath()));
 						} else {
