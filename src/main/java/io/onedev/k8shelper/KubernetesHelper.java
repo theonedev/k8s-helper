@@ -394,8 +394,12 @@ public class KubernetesHelper {
 						git.clearArgs();
 					}								
 					
-					git.addArgs("fetch", projectUrl, "--force", "--quiet", 
-							"--depth=1", commitHash);
+					Integer cloneDepth = (Integer) jobContext.get("cloneDepth");
+					
+					git.addArgs("fetch", projectUrl, "--force", "--quiet");
+					if (cloneDepth != null)
+						git.addArgs("--depth=" + cloneDepth);
+					git.addArgs(commitHash);
 					git.execute(infoLogger, errorLogger).checkReturnCode();
 					
 					git.clearArgs();
@@ -431,9 +435,13 @@ public class KubernetesHelper {
 						File linkTarget = entry.getKey().getDirectory(cacheHome);
 						if (isWindows()) {
 							setupCommands.add("@echo off");							
+							// create possible missing parent directories
+							setupCommands.add(String.format("if not exist \"%s\" mkdir \"%s\"", link, link)); 
 							setupCommands.add(String.format("rmdir /q /s \"%s\"", link));							
 							setupCommands.add(String.format("mklink /D \"%s\" \"%s\"", link, linkTarget.getAbsolutePath()));
 						} else {
+							// create possible missing parent directories
+							setupCommands.add(String.format("mkdir -p \"%s\"", link)); 
 							setupCommands.add(String.format("rm -rf \"%s\"", link));
 							setupCommands.add(String.format("ln -s \"%s\" \"%s\"", linkTarget.getAbsolutePath(), link));
 						}
