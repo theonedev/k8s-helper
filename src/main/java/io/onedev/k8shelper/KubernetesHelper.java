@@ -57,29 +57,29 @@ public class KubernetesHelper {
 	
 	private static final Logger logger = LoggerFactory.getLogger(KubernetesHelper.class);
 	
-	private static File getCIHome() {
+	private static File getBuildHome() {
 		if (isWindows()) 
-			return new File("C:\\onedev-ci");
+			return new File("C:\\onedev-build");
 		else 
-			return new File("/onedev-ci");
+			return new File("/onedev-build");
 	}
 	
 	private static File getTrustCertsHome() {
 		if (isWindows()) 
-			return new File("C:\\onedev-ci\\trust-certs");
+			return new File("C:\\onedev-build\\trust-certs");
 		else 
-			return new File("/onedev-ci/trust-certs");
+			return new File("/onedev-build/trust-certs");
 	}
 	
 	private static File getCacheHome() {
 		if (isWindows())
-			return new File("C:\\onedev-ci\\cache");
+			return new File("C:\\onedev-build\\cache");
 		else
-			return new File("/onedev-ci/cache");
+			return new File("/onedev-build/cache");
 	}
 	
 	private static File getWorkspace() {
-		return new File(getCIHome(), "workspace");
+		return new File(getBuildHome(), "workspace");
 	}
 	
 	public static boolean isWindows() {
@@ -163,39 +163,39 @@ public class KubernetesHelper {
 	
 	private static void generateCommandScript(List<String> setupCommands, List<String> jobCommands) {
 		try {
-			File ciHome = getCIHome();
+			File buildHome = getBuildHome();
 			if (isWindows()) {
-				File setupScriptFile = new File(ciHome, "setup-commands.bat");
+				File setupScriptFile = new File(buildHome, "setup-commands.bat");
 				FileUtils.writeLines(setupScriptFile, setupCommands, "\r\n");
 				
-				File jobScriptFile = new File(ciHome, "job-commands.bat");
+				File jobScriptFile = new File(buildHome, "job-commands.bat");
 				FileUtils.writeLines(jobScriptFile, jobCommands, "\r\n");
 				
-				File scriptFile = new File(ciHome, "commands.bat");
+				File scriptFile = new File(buildHome, "commands.bat");
 				List<String> scriptContent = Lists.newArrayList(
 						"@echo off",
 						"cd " + getWorkspace().getAbsolutePath() 
-								+ " && cmd /c " + ciHome.getAbsolutePath() + "\\setup-commands.bat"
-								+ " && cmd /c " + ciHome.getAbsolutePath() + "\\job-commands.bat", 
+								+ " && cmd /c " + buildHome.getAbsolutePath() + "\\setup-commands.bat"
+								+ " && cmd /c " + buildHome.getAbsolutePath() + "\\job-commands.bat", 
 						"set last_exit_code=%errorlevel%",
-						"copy nul > " + ciHome.getAbsolutePath() + "\\job-finished",
+						"copy nul > " + buildHome.getAbsolutePath() + "\\job-finished",
 						"echo " + LOG_END_MESSAGE,
 						"exit %last_exit_code%");
 				FileUtils.writeLines(scriptFile, scriptContent, "\r\n");
 			} else {
-				File setupScriptFile = new File(ciHome, "setup-commands.sh");
+				File setupScriptFile = new File(buildHome, "setup-commands.sh");
 				FileUtils.writeLines(setupScriptFile, setupCommands, "\n");
 				
-				File jobScriptFile = new File(ciHome, "job-commands.sh");
+				File jobScriptFile = new File(buildHome, "job-commands.sh");
 				FileUtils.writeLines(jobScriptFile, jobCommands, "\n");
 				
-				File scriptFile = new File(ciHome, "commands.sh");
+				File scriptFile = new File(buildHome, "commands.sh");
 				List<String> wrapperScriptContent = Lists.newArrayList(
 						"cd " + getWorkspace().getAbsolutePath() 
-								+ " && sh " + ciHome.getAbsolutePath() + "/setup-commands.sh"
-								+ " && sh " + ciHome.getAbsolutePath() + "/job-commands.sh", 
+								+ " && sh " + buildHome.getAbsolutePath() + "/setup-commands.sh"
+								+ " && sh " + buildHome.getAbsolutePath() + "/job-commands.sh", 
 						"lastExitCode=\"$?\"", 
-						"touch " + ciHome.getAbsolutePath() + "/job-finished",
+						"touch " + buildHome.getAbsolutePath() + "/job-finished",
 						"echo " + LOG_END_MESSAGE,
 						"exit $lastExitCode"
 						);
@@ -359,7 +359,7 @@ public class KubernetesHelper {
 								trustCertContent.addAll(FileUtils.readLines(file, Charset.defaultCharset()));
 						}
 						
-						File trustCertFile = new File(getCIHome(), "trust-cert.pem");
+						File trustCertFile = new File(getBuildHome(), "trust-cert.pem");
 						FileUtils.writeLines(trustCertFile, trustCertContent, "\n");
 						git.clearArgs();
 						git.addArgs("config", "--global", "http.sslCAInfo", trustCertFile.getAbsolutePath());
@@ -500,7 +500,7 @@ public class KubernetesHelper {
 	public static void sidecar(String serverUrl, String jobToken, boolean test) {
 		installTrustCerts();
 		
-		File finishedFile = new File(getCIHome(), "job-finished");
+		File finishedFile = new File(getBuildHome(), "job-finished");
 		while (!finishedFile.exists()) {
 			try {
 				Thread.sleep(1000);
