@@ -8,6 +8,7 @@ import java.io.OutputStream;
 import java.io.Serializable;
 import java.net.URLEncoder;
 import java.nio.charset.Charset;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -36,7 +37,6 @@ import org.glassfish.jersey.client.ClientProperties;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import com.google.common.base.Charsets;
 import com.google.common.collect.Lists;
 
 import io.onedev.commons.utils.FileUtils;
@@ -369,8 +369,8 @@ public class KubernetesHelper {
 					List<String> submoduleCredentials = new ArrayList<>();
 					for (Map<String, String> map: (List<Map<String, String>>)jobContext.get("submoduleCredentials")) {
 						String url = map.get("url");
-						String userName = URLEncoder.encode(map.get("userName"), Charsets.UTF_8.name());
-						String password = URLEncoder.encode(map.get("password"), Charsets.UTF_8.name());
+						String userName = URLEncoder.encode(map.get("userName"), StandardCharsets.UTF_8.name());
+						String password = URLEncoder.encode(map.get("password"), StandardCharsets.UTF_8.name());
 						if (url.startsWith("http://")) {
 							submoduleCredentials.add("http://" + userName + ":" + password 
 									+ "@" + url.substring("http://".length()).replace(":", "%3a"));
