@@ -91,7 +91,8 @@ public class KubernetesHelper {
 
 			@Override
 			public void consume(String line) {
-				logger.info(line);
+				if (!line.startsWith("Initialized empty Git repository"))
+					logger.info(line);
 			}
 			
 		};
