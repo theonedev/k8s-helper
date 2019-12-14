@@ -5,7 +5,7 @@
         <io.onedev.server.buildspec.job.Job>
             <name>Release</name>
             <paramSpecs/>
-            <image>server-build-environment:1.0</image>
+            <image>1dev/build-environment:1.0</image>
             <commands>
                 <string>sh build.sh @secrets:dockerhub-password@</string>
             </commands>
