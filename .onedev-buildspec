@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<io.onedev.server.buildspec.BuildSpec revision="0">
+    <jobs>
+        <io.onedev.server.buildspec.job.Job>
+            <name>Release</name>
+            <paramSpecs/>
+            <image>server-build-environment:1.0</image>
+            <commands>
+                <string>sh build.sh @secrets:dockerhub-password@</string>
+            </commands>
+            <retrieveSource>true</retrieveSource>
+            <submoduleCredentials/>
+            <jobDependencies/>
+            <projectDependencies/>
+            <services/>
+            <reports/>
+            <triggers>
+                <io.onedev.server.buildspec.job.trigger.BranchUpdateTrigger>
+                    <params/>
+                </io.onedev.server.buildspec.job.trigger.BranchUpdateTrigger>
+            </triggers>
+            <caches/>
+            <cpuRequirement>250m</cpuRequirement>
+            <memoryRequirement>128m</memoryRequirement>
+            <timeout>3600</timeout>
+            <postBuildActions/>
+            <retryCondition>never</retryCondition>
+            <maxRetries>3</maxRetries>
+            <retryDelay>30</retryDelay>
+        </io.onedev.server.buildspec.job.Job>
+    </jobs>
+</io.onedev.server.buildspec.BuildSpec>
