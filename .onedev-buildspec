@@ -7,6 +7,8 @@
             <paramSpecs/>
             <image>1dev/build-environment:1.0</image>
             <commands>
+                <string>set -e</string>
+                <string>rm -rf ~/.m2/repository/io/onedev #clean downloaded dependencies as sometimes we do not change project versions</string>
                 <string>sh build.sh @secrets:dockerhub-password@</string>
             </commands>
             <retrieveSource>true</retrieveSource>
