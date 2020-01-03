@@ -177,6 +177,7 @@ public class KubernetesHelper {
 						"@echo off",
 						"cd " + getWorkspace().getAbsolutePath() 
 								+ " && cmd /c " + buildHome.getAbsolutePath() + "\\setup-commands.bat"
+								+ " && cmd /c echo Executing job commands..."
 								+ " && cmd /c " + buildHome.getAbsolutePath() + "\\job-commands.bat", 
 						"set last_exit_code=%errorlevel%",
 						"copy nul > " + buildHome.getAbsolutePath() + "\\job-finished",
@@ -194,6 +195,7 @@ public class KubernetesHelper {
 				List<String> wrapperScriptContent = Lists.newArrayList(
 						"cd " + getWorkspace().getAbsolutePath() 
 								+ " && sh " + buildHome.getAbsolutePath() + "/setup-commands.sh"
+								+ " && echo Executing job commands..." 
 								+ " && sh " + buildHome.getAbsolutePath() + "/job-commands.sh", 
 						"lastExitCode=\"$?\"", 
 						"touch " + buildHome.getAbsolutePath() + "/job-finished",
