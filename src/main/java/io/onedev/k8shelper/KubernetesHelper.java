@@ -333,16 +333,8 @@ public class KubernetesHelper {
 					git.addArgs("config", "--global", "credential.modalprompt", "false");
 					git.execute(infoLogger, errorLogger).checkReturnCode();
 					
-					// clear credential.helper list to remove possible Windows credential manager
 					git.clearArgs();
-					if (SystemUtils.IS_OS_WINDOWS)
-						git.addArgs("config", "--global", "credential.helper", "\"\"");
-					else
-						git.addArgs("config", "--global", "credential.helper", "");
-					git.execute(infoLogger, errorLogger).checkReturnCode();
-					
-					git.clearArgs();
-					git.addArgs("config", "--global", "--add", "credential.helper", "store");
+					git.addArgs("config", "--global", "--replace-all", "credential.helper", "store");
 					git.execute(infoLogger, errorLogger).checkReturnCode();
 					
 					git.clearArgs();
