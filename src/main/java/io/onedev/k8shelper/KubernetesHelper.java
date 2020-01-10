@@ -425,7 +425,9 @@ public class KubernetesHelper {
 					}).checkReturnCode();
 					
 					git.clearArgs();
-					git.addArgs("submodule", "update", "--init", "--recursive", "--force", "--quiet", "--depth=1");
+					git.addArgs("submodule", "update", "--init", "--recursive", "--force", "--quiet");
+					if (cloneDepth != null)
+						git.addArgs("--depth=" + cloneDepth);						
 					git.execute(infoLogger, errorLogger).checkReturnCode();
 					
 					FileUtils.deleteFile(credentialsFile);
