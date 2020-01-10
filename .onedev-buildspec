@@ -24,7 +24,7 @@
             </triggers>
             <caches>
                 <io.onedev.server.buildspec.job.CacheSpec>
-                    <key>maven-repository</key>
+                    <key>maven-cache</key>
                     <path>/root/.m2/repository</path>
                 </io.onedev.server.buildspec.job.CacheSpec>
             </caches>
