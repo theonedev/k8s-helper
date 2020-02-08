@@ -8,8 +8,16 @@
             <image>1dev/build-environment:1.0</image>
             <commands>
                 <string>set -e</string>
-                <string>rm -rf ~/.m2/repository/io/onedev #clean downloaded dependencies as sometimes we do not change project versions</string>
-                <string>sh build.sh @secrets:dockerhub-password@</string>
+                <string>docker login -u robinshen -p @secrets:dockerhub-password@</string>
+                <string></string>
+                <string>echo "Detecting project version (may require some time while downloading maven dependencies)..."</string>
+                <string>buildVersion=$(mvn org.apache.maven.plugins:maven-help-plugin:3.1.0:evaluate -Dexpression=project.version -q -DforceStdout)</string>
+                <string>echo "##onedev[SetBuildVersion '$buildVersion']"</string>
+                <string></string>
+                <string>cp settings.xml /root/.m2/</string>
+                <string>mvn deploy -Dmaven.deploy.password=@secrets:maven-deploy-password@</string>
+                <string>docker build -t 1dev/k8s-helper-linux:$buildVersion -f Dockerfile.linux .</string>
+                <string>docker push 1dev/k8s-helper-linux:$buildVersion</string>
             </commands>
             <retrieveSource>true</retrieveSource>
             <submoduleCredentials/>
