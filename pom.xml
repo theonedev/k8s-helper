@@ -7,10 +7,10 @@
 	<parent>
 		<groupId>io.onedev</groupId>
 		<artifactId>parent</artifactId>
-		<version>1.0.3</version>
+		<version>1.0.4</version>
 	</parent>
 	<artifactId>k8s-helper</artifactId>
-	<version>1.0.9</version>
+	<version>1.0.10</version>
 	<build>
 		<plugins>
 			<plugin>
@@ -41,8 +41,8 @@
 	</build>
 	<repositories>
 		<repository>
-			<id>pmeaseRepo</id>
-			<url>http://artifact.pmease.com/artifactory/pmeaseRepo</url>
+			<id>onedev</id>
+			<url>https://artifact.onedev.io/artifactory/onedev</url>
 			<releases>
 				<enabled>true</enabled>
 				<updatePolicy>never</updatePolicy>
@@ -83,7 +83,7 @@
 		</dependency>
 	</dependencies>
 	<properties>
-		<commons.version>1.1.11</commons.version>
+		<commons.version>1.1.12</commons.version>
 		<jersey.version>2.26</jersey.version>
 	</properties>
 </project>
