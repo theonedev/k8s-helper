@@ -5,7 +5,7 @@
         <io.onedev.server.buildspec.job.Job>
             <name>Release</name>
             <paramSpecs/>
-            <image>1dev/build-environment:1.0</image>
+            <image>1dev/build-environment:1.1</image>
             <commands>
                 <string>set -e</string>
                 <string>docker login -u robinshen -p @secrets:dockerhub-password@</string>
@@ -14,8 +14,8 @@
                 <string>buildVersion=$(mvn org.apache.maven.plugins:maven-help-plugin:3.1.0:evaluate -Dexpression=project.version -q -DforceStdout)</string>
                 <string>echo "##onedev[SetBuildVersion '$buildVersion']"</string>
                 <string></string>
-                <string>cp settings.xml /root/.m2/</string>
                 <string>mvn deploy -Dmaven.deploy.password=@secrets:maven-deploy-password@</string>
+                <string></string>
                 <string>docker build -t 1dev/k8s-helper-linux:$buildVersion -f Dockerfile.linux .</string>
                 <string>docker push 1dev/k8s-helper-linux:$buildVersion</string>
             </commands>
@@ -28,6 +28,7 @@
             <triggers>
                 <io.onedev.server.buildspec.job.trigger.BranchUpdateTrigger>
                     <params/>
+                    <branches>master</branches>
                 </io.onedev.server.buildspec.job.trigger.BranchUpdateTrigger>
             </triggers>
             <caches>
@@ -49,7 +50,7 @@
             <paramSpecs/>
             <image>alpine/git:1.0.7</image>
             <commands>
-                <string>git push https://robinshine:@secrets:github-password@\@github.com/theonedev/k8s-helper HEAD:master</string>
+                <string>git push -f https://robinshine:@secrets:github-password@\@github.com/theonedev/k8s-helper HEAD:master</string>
             </commands>
             <retrieveSource>true</retrieveSource>
             <submoduleCredentials/>
