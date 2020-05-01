@@ -322,7 +322,7 @@ public class KubernetesHelper {
 					String projectName = (String) jobContext.get("projectName");
 					String commitHash = (String) jobContext.get("commitHash");
 					
-					String projectUrl = serverUrl + "/projects/" + projectName;
+					String projectUrl = serverUrl + "/" + projectName;
 					logger.info("Retrieving source code from {}...", projectUrl);
 
 					LineConsumer infoLogger = newInfoLogger();
