@@ -6,9 +6,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.io.Serializable;
-import java.net.URLEncoder;
 import java.nio.charset.Charset;
-import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -84,35 +82,6 @@ public class KubernetesHelper {
 	
 	public static boolean isWindows() {
 		return System.getProperty("os.name").toLowerCase().contains("windows");
-	}
-	
-	private static LineConsumer newInfoLogger() {
-		return new LineConsumer() {
-
-			@Override
-			public void consume(String line) {
-				if (!line.startsWith("Initialized empty Git repository"))
-					logger.info(line);
-			}
-			
-		};
-	}
-	
-	private static LineConsumer newErrorLogger() {
-		return new LineConsumer() {
-
-			@Override
-			public void consume(String line) {
-				if (line.contains("Submodule") && line.contains("registered for path")
-						|| line.startsWith("From ") || line.startsWith(" * branch")
-						|| line.startsWith(" +") && line.contains("->")) {
-					logger.info(line);
-				} else {
-					logger.error(line);
-				}
-			}
-			
-		};
 	}
 	
 	public static Map<CacheInstance, Date> getCacheInstances(File cacheHome) {
@@ -209,7 +178,7 @@ public class KubernetesHelper {
 		}
 	}
 	
-	private static void installTrustCerts() {
+	private static void installJVMCert() {
 		File trustCertsHome = getTrustCertsHome();
 		if (trustCertsHome.exists()) {
 			String keystore = System.getProperty("java.home") + "/lib/security/cacerts";
@@ -233,9 +202,43 @@ public class KubernetesHelper {
 		}
 	}
 	
+	private static LineConsumer newInfoLogger() {
+		return new LineConsumer() {
+
+			@Override
+			public void consume(String line) {
+				logger.info(line);
+			}
+			
+		};
+	}
+	
+	private static LineConsumer newErrorLogger() {
+		return new LineConsumer() {
+
+			@Override
+			public void consume(String line) {
+				logger.error(line);
+			}
+			
+		};
+	}
+	
+	public static void installGitCert(File certFile, List<String> certLines, 
+			Commandline git, LineConsumer infoLogger, LineConsumer errorLogger) {
+		try {
+			FileUtils.writeLines(certFile, certLines, "\n");
+		} catch (IOException e) {
+			throw new RuntimeException(e);
+		}
+		git.clearArgs();
+		git.addArgs("config", "--global", "http.sslCAInfo", certFile.getAbsolutePath());
+		git.execute(infoLogger, errorLogger).checkReturnCode();
+	}
+	
 	@SuppressWarnings("unchecked")
 	public static void init(String serverUrl, String jobToken, boolean test) {
-		installTrustCerts();
+		installJVMCert();
 		
 		Client client = ClientBuilder.newClient();
 		try {
@@ -319,32 +322,31 @@ public class KubernetesHelper {
 				}
 				boolean retrieveSource = (boolean) jobContext.get("retrieveSource");
 				if (retrieveSource) {
-					String projectName = (String) jobContext.get("projectName");
 					String commitHash = (String) jobContext.get("commitHash");
+					CloneInfo cloneInfo = (CloneInfo) jobContext.get("cloneInfo");
 					
-					String projectUrl = serverUrl + "/" + projectName;
-					logger.info("Retrieving source code from {}...", projectUrl);
+					logger.info("Retrieving source code from {}...", cloneInfo.getCloneUrl());
 
 					LineConsumer infoLogger = newInfoLogger();
 					LineConsumer errorLogger = newErrorLogger();
-					Commandline git = new Commandline("git");
-					git.workingDir(workspace);
 					
-					git.addArgs("config", "--global", "credential.modalprompt", "false");
-					git.execute(infoLogger, errorLogger).checkReturnCode();
+					File userHome;
+					if (SystemUtils.IS_OS_WINDOWS)
+						userHome = new File("C:\\Users\\ContainerAdministrator");
+					else
+						userHome = new File("/root");
 					
-					git.clearArgs();
-					git.addArgs("config", "--global", "--replace-all", "credential.helper", "store");
-					git.execute(infoLogger, errorLogger).checkReturnCode();
+					Commandline git = new Commandline("git").workingDir(workspace);
 					
-					git.clearArgs();
-					git.addArgs("config", "--global", "credential.useHttpPath", "true");
-					git.execute(infoLogger, errorLogger).checkReturnCode();
-
-					git.clearArgs();
-					String extraHeader = KubernetesHelper.JOB_TOKEN_HTTP_HEADER + ": " + jobToken;
-					git.addArgs("config", "--global", "http.extraHeader", extraHeader);
-					git.execute(infoLogger, errorLogger).checkReturnCode();
+					// Populate auth data here in order to clone source in init container
+					cloneInfo.writeAuthData(userHome, git, infoLogger, errorLogger);
+					
+					File mountedUserHome = new File(userHome, "onedev");
+					Commandline gitOfMountedUserHome = new Commandline("git");
+					gitOfMountedUserHome.environments().put("HOME", mountedUserHome.getAbsolutePath());
+					
+					// Populate auth data here in case user want to do additional pull/push in main container 
+					cloneInfo.writeAuthData(mountedUserHome, gitOfMountedUserHome, infoLogger, errorLogger);
 					
 					File trustCertsHome = getTrustCertsHome();
 					if (trustCertsHome.exists()) {
@@ -353,91 +355,60 @@ public class KubernetesHelper {
 							if (file.isFile()) 
 								trustCertContent.addAll(FileUtils.readLines(file, Charset.defaultCharset()));
 						}
-						
-						File trustCertFile = new File(getBuildHome(), "trust-cert.pem");
-						FileUtils.writeLines(trustCertFile, trustCertContent, "\n");
-						git.clearArgs();
-						git.addArgs("config", "--global", "http.sslCAInfo", trustCertFile.getAbsolutePath());
-						git.execute(infoLogger, errorLogger).checkReturnCode();
+						installGitCert(new File(getBuildHome(), "trust-cert.pem"), trustCertContent, git, 
+								infoLogger, errorLogger);
 					}
-					
-					List<String> submoduleCredentials = new ArrayList<>();
-					for (Map<String, String> map: (List<Map<String, String>>)jobContext.get("submoduleCredentials")) {
-						String url = map.get("url");
-						String userName = URLEncoder.encode(map.get("userName"), StandardCharsets.UTF_8.name());
-						String password = URLEncoder.encode(map.get("password"), StandardCharsets.UTF_8.name());
-						if (url.startsWith("http://")) {
-							submoduleCredentials.add("http://" + userName + ":" + password 
-									+ "@" + url.substring("http://".length()).replace(":", "%3a"));
-						} else {
-							submoduleCredentials.add("https://" + userName + ":" + password 
-									+ "@" + url.substring("https://".length()).replace(":", "%3a"));
-						}
-					}
-					
-					File credentialsFile;
-					if (SystemUtils.IS_OS_WINDOWS)
-						credentialsFile = new File("C:\\Users\\ContainerAdministrator\\.git-credentials");
-					else
-						credentialsFile = new File("/root/.git-credentials");
-					FileUtils.writeLines(credentialsFile, submoduleCredentials, "\n");
-					
-					git.clearArgs();
-					if (!new File(workspace, ".git").exists()) {
-						git.addArgs("init", ".");
-						git.execute(infoLogger, errorLogger).checkReturnCode();
-						git.clearArgs();
-					}								
 					
 					Integer cloneDepth = (Integer) jobContext.get("cloneDepth");
-					
-					git.addArgs("fetch", projectUrl, "--force", "--quiet");
-					if (cloneDepth != null)
-						git.addArgs("--depth=" + cloneDepth);
-					git.addArgs(commitHash);
-					git.execute(infoLogger, errorLogger).checkReturnCode();
+					clone(workspace, cloneInfo.getCloneUrl(), commitHash, cloneDepth, git, infoLogger, errorLogger);
 					
 					git.clearArgs();
-					git.addArgs("checkout", "--quiet", commitHash);
+					git.addArgs("remote", "add", "origin", cloneInfo.getCloneUrl());
 					git.execute(infoLogger, errorLogger).checkReturnCode();
 					
-					// deinit submodules in case submodule url is changed
-					git.clearArgs();
-					git.addArgs("submodule", "deinit", "--all", "--force", "--quiet");
-					git.execute(infoLogger, new LineConsumer() {
-
-						@Override
-						public void consume(String line) {
-							if (!line.contains("error: could not lock config file") && 
-									!line.contains("warning: Could not unset core.worktree setting in submodule")) {
-								errorLogger.consume(line);
-							}
-						}
+					if (new File(workspace, ".gitmodules").exists()) {
+						logger.info("Retrieving submodules...");
 						
-					}).checkReturnCode();
-					
-					git.clearArgs();
-					git.addArgs("submodule", "update", "--init", "--recursive", "--force", "--quiet");
-					if (cloneDepth != null)
-						git.addArgs("--depth=" + cloneDepth);						
-					git.execute(infoLogger, errorLogger).checkReturnCode();
-					
-					FileUtils.deleteFile(credentialsFile);
-				}	
+						git.clearArgs();
+						git.addArgs("submodule", "update", "--init", "--recursive", "--force", "--quiet");
+						if (cloneDepth != null)
+							git.addArgs("--depth=" + cloneDepth);						
+						git.execute(infoLogger, new LineConsumer() {
 
+							@Override
+							public void consume(String line) {
+								if (line.contains("Submodule") && line.contains("registered for path")
+										|| line.startsWith("From ") || line.startsWith(" * branch")
+										|| line.startsWith(" +") && line.contains("->")) {
+									infoLogger.consume(line);
+								} else {
+									errorLogger.consume(line);
+								}
+							}
+							
+						}).checkReturnCode();
+					}
+					
+				}	
+				
 				List<String> setupCommands = new ArrayList<>();
+				if (isWindows()) {
+					setupCommands.add("@echo off");							
+					setupCommands.add("xcopy /Y /S /K /Q /H /R C:\\Users\\ContainerAdministrator\\onedev\\* C:\\Users\\ContainerAdministrator>nul");
+				} else { 
+					setupCommands.add("cp -r -f -p /root/onedev/. /root");
+				}
+				
 				for (Map.Entry<CacheInstance, String> entry: cacheAllocations.entrySet()) {
 					if (!PathUtils.isCurrent(entry.getValue())) {
 						String link = PathUtils.resolve(workspace.getAbsolutePath(), entry.getValue());
 						File linkTarget = entry.getKey().getDirectory(cacheHome);
+						// create possible missing parent directories
 						if (isWindows()) {
-							setupCommands.add("@echo off");							
-							// create possible missing parent directories
 							setupCommands.add(String.format("if not exist \"%s\" mkdir \"%s\"", link, link)); 
 							setupCommands.add(String.format("rmdir /q /s \"%s\"", link));							
 							setupCommands.add(String.format("mklink /D \"%s\" \"%s\"", link, linkTarget.getAbsolutePath()));
 						} else {
-							// create possible missing parent directories
 							setupCommands.add(String.format("mkdir -p \"%s\"", link)); 
 							setupCommands.add(String.format("rm -rf \"%s\"", link));
 							setupCommands.add(String.format("ln -s \"%s\" \"%s\"", linkTarget.getAbsolutePath(), link));
@@ -492,10 +463,55 @@ public class KubernetesHelper {
 			return response;
 		}
 	}
+	
+	public static void clone(File workspace, String cloneUrl, String commitHash, 
+			Integer cloneDepth, Commandline git, LineConsumer infoLogger, LineConsumer errorLogger) {
+		git.clearArgs();
+		if (!new File(workspace, ".git").exists()) {
+			git.addArgs("init", ".");
+			git.execute(new LineConsumer() {
+
+				@Override
+				public void consume(String line) {
+					if (!line.startsWith("Initialized empty Git repository"))
+						infoLogger.consume(line);
+				}
+				
+			}, errorLogger).checkReturnCode();
+		}								
+		
+		git.clearArgs();
+		git.addArgs("fetch", cloneUrl, "--force", "--quiet");
+		if (cloneDepth != null)
+			git.addArgs("--depth=" + cloneDepth);
+		git.addArgs(commitHash);
+		git.execute(infoLogger, errorLogger).checkReturnCode();
+		
+		git.clearArgs();
+		git.addArgs("checkout", "--quiet", commitHash);
+		git.execute(infoLogger, errorLogger).checkReturnCode();
+		
+		if (new File(workspace, ".gitmodules").exists()) {
+			// deinit submodules in case submodule url is changed
+			git.clearArgs();
+			git.addArgs("submodule", "deinit", "--all", "--force", "--quiet");
+			git.execute(infoLogger, new LineConsumer() {
+
+				@Override
+				public void consume(String line) {
+					if (!line.contains("error: could not lock config file") && 
+							!line.contains("warning: Could not unset core.worktree setting in submodule")) {
+						errorLogger.consume(line);
+					}
+				}
+				
+			}).checkReturnCode();
+		}
+	}
 
 	@SuppressWarnings("unchecked")
 	public static void sidecar(String serverUrl, String jobToken, boolean test) {
-		installTrustCerts();
+		installJVMCert();
 		
 		File finishedFile = new File(getBuildHome(), "job-finished");
 		while (!finishedFile.exists()) {

@@ -11,7 +11,7 @@
                 <string>docker login -u robinshen -p @secrets:dockerhub-password@</string>
                 <string></string>
                 <string>echo "Detecting project version (may require some time while downloading maven dependencies)..."</string>
-                <string>buildVersion=$(mvn org.apache.maven.plugins:maven-help-plugin:3.1.0:evaluate -Dexpression=project.version -q -DforceStdout)</string>
+                <string>buildVersion=$(mvn org.apache.maven.plugins:maven-help-plugin:3.2.0:evaluate -Dexpression=project.version -q -DforceStdout)</string>
                 <string>echo "##onedev[SetBuildVersion '$buildVersion']"</string>
                 <string></string>
                 <string>mvn deploy -Dmaven.deploy.password=@secrets:maven-deploy-password@</string>
