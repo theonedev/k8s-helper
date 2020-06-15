@@ -24,6 +24,7 @@ import javax.ws.rs.client.ClientBuilder;
 import javax.ws.rs.client.Entity;
 import javax.ws.rs.client.Invocation;
 import javax.ws.rs.client.WebTarget;
+import javax.ws.rs.core.HttpHeaders;
 import javax.ws.rs.core.MediaType;
 import javax.ws.rs.core.Response;
 import javax.ws.rs.core.StreamingOutput;
@@ -49,7 +50,7 @@ public class KubernetesHelper {
 	
 	public static final String ENV_JOB_TOKEN = "ONEDEV_JOB_TOKEN";
 	
-	public static final String JOB_TOKEN_HTTP_HEADER = "X-ONEDEV-JOB-TOKEN";
+	public static final String BEARER = "Bearer";
 	
 	public static final String LOG_END_MESSAGE = "===== End of OneDev K8s Helper Log =====";
 	
@@ -247,7 +248,7 @@ public class KubernetesHelper {
 				logger.info("Testing server connectivity with '{}'...", serverUrl);
 				WebTarget target = client.target(serverUrl).path("rest/k8s/test");
 				Invocation.Builder builder =  target.request();
-				builder.header(KubernetesHelper.JOB_TOKEN_HTTP_HEADER, jobToken);
+				builder.header(HttpHeaders.AUTHORIZATION, BEARER + " " + jobToken);
 				checkStatus(builder.get());
 				File tempFile = null;
 				try {
@@ -266,7 +267,7 @@ public class KubernetesHelper {
 			} else {
 				WebTarget target = client.target(serverUrl).path("rest/k8s/job-context");
 				Invocation.Builder builder =  target.request();
-				builder.header(KubernetesHelper.JOB_TOKEN_HTTP_HEADER, jobToken);
+				builder.header(HttpHeaders.AUTHORIZATION, BEARER + " " + jobToken);
 				
 				logger.info("Retrieving job context from {}...", serverUrl);
 				
@@ -284,7 +285,7 @@ public class KubernetesHelper {
 				logger.info("Allocating job caches from {}...", serverUrl);
 				target = client.target(serverUrl).path("rest/k8s/allocate-job-caches");
 				builder =  target.request();
-				builder.header(KubernetesHelper.JOB_TOKEN_HTTP_HEADER, jobToken);
+				builder.header(HttpHeaders.AUTHORIZATION, BEARER + " " + jobToken);
 				Map<CacheInstance, Date> cacheInstances = getCacheInstances(cacheHome);
 				byte[] cacheAllocationRequestBytes = SerializationUtils.serialize(
 						new CacheAllocationRequest(new Date(), cacheInstances));
@@ -424,7 +425,7 @@ public class KubernetesHelper {
 				
 				target = client.target(serverUrl).path("rest/k8s/download-dependencies");
 				builder =  target.request();
-				builder.header(KubernetesHelper.JOB_TOKEN_HTTP_HEADER, jobToken);
+				builder.header(HttpHeaders.AUTHORIZATION, BEARER + " " + jobToken);
 				response = checkStatus(builder.get());
 				try {
 					InputStream is = response.readEntity(InputStream.class);
@@ -530,7 +531,7 @@ public class KubernetesHelper {
 				
 				WebTarget target = client.target(serverUrl).path("rest/k8s/job-context");
 				Invocation.Builder builder =  target.request();
-				builder.header(KubernetesHelper.JOB_TOKEN_HTTP_HEADER, jobToken);
+				builder.header(HttpHeaders.AUTHORIZATION, BEARER + " " + jobToken);
 				
 				Map<String, Object> jobContext;
 				Response response = checkStatus(builder.get());
@@ -555,7 +556,7 @@ public class KubernetesHelper {
 				   
 				};
 				builder = target.request();
-				builder.header(KubernetesHelper.JOB_TOKEN_HTTP_HEADER, jobToken);
+				builder.header(HttpHeaders.AUTHORIZATION, BEARER + " " + jobToken);
 				try {
 					response = builder.post(Entity.entity(os, MediaType.APPLICATION_OCTET_STREAM_TYPE));
 					checkStatus(response);
@@ -566,7 +567,7 @@ public class KubernetesHelper {
 				logger.info("Reporting job caches to '{}'...", serverUrl);
 				target = client.target(serverUrl).path("rest/k8s/report-job-caches");
 				builder =  target.request();
-				builder.header(KubernetesHelper.JOB_TOKEN_HTTP_HEADER, jobToken);
+				builder.header(HttpHeaders.AUTHORIZATION, BEARER + " " + jobToken);
 				Collection<CacheInstance> cacheInstances = new HashSet<>(getCacheInstances(getCacheHome()).keySet());
 				byte[] cacheInstanceBytes = SerializationUtils.serialize((Serializable) cacheInstances);
 				try {
