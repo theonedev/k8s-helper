@@ -18,7 +18,7 @@ jobs:
   - docker push 1dev/k8s-helper-linux:$buildVersion
   triggers:
   - !BranchUpdateTrigger
-    branches: master
+    branches: main
   retrieveSource: true
   cloneCredential: !DefaultCredential {}
   cpuRequirement: 250m
@@ -39,10 +39,10 @@ jobs:
   commands:
   - git config --global --unset http.extraHeader
   - git push -f https://robinshine:@secrets:github-token@\@github.com/theonedev/k8s-helper
-    HEAD:master
+    HEAD:main
   triggers:
   - !BranchUpdateTrigger
-    branches: master
+    branches: main
   retrieveSource: true
   cloneCredential: !DefaultCredential {}
   cpuRequirement: 250m
