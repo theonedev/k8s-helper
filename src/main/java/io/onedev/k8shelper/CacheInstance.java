@@ -27,5 +27,15 @@ public class CacheInstance implements Serializable {
 	public File getDirectory(File cacheHome) {
 		return new File(new File(cacheHome, cacheKey), name);
 	}
+
+	@Override
+	public String toString() {
+		return name + "," + cacheKey;
+	}
+
+	public static CacheInstance fromString(String string) {
+		int index = string.indexOf(',');
+		return new CacheInstance(string.substring(0, index), string.substring(index+1));
+	}
 	
 }

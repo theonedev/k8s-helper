@@ -5,14 +5,11 @@ import java.io.FileFilter;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
-import java.io.Serializable;
 import java.nio.charset.Charset;
 import java.nio.file.Files;
 import java.util.ArrayList;
-import java.util.Collection;
 import java.util.Date;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
@@ -286,12 +283,11 @@ public class KubernetesHelper {
 				target = client.target(serverUrl).path("rest/k8s/allocate-job-caches");
 				builder =  target.request();
 				builder.header(HttpHeaders.AUTHORIZATION, BEARER + " " + jobToken);
-				Map<CacheInstance, Date> cacheInstances = getCacheInstances(cacheHome);
-				byte[] cacheAllocationRequestBytes = SerializationUtils.serialize(
-						new CacheAllocationRequest(new Date(), cacheInstances));
 				Map<CacheInstance, String> cacheAllocations;
 				try {
-					response = builder.post(Entity.entity(cacheAllocationRequestBytes, MediaType.APPLICATION_OCTET_STREAM));
+					response = builder.post(Entity.entity(
+							new CacheAllocationRequest(new Date(), getCacheInstances(cacheHome)).toString(),
+							MediaType.APPLICATION_OCTET_STREAM));
 					checkStatus(response);
 					cacheAllocations = SerializationUtils.deserialize(response.readEntity(byte[].class));
 				} finally {
@@ -568,10 +564,11 @@ public class KubernetesHelper {
 				target = client.target(serverUrl).path("rest/k8s/report-job-caches");
 				builder =  target.request();
 				builder.header(HttpHeaders.AUTHORIZATION, BEARER + " " + jobToken);
-				Collection<CacheInstance> cacheInstances = new HashSet<>(getCacheInstances(getCacheHome()).keySet());
-				byte[] cacheInstanceBytes = SerializationUtils.serialize((Serializable) cacheInstances);
+				StringBuilder toStringBuilder = new StringBuilder();
+				for (CacheInstance instance: getCacheInstances(getCacheHome()).keySet()) 
+					toStringBuilder.append(instance.toString()).append(";");
 				try {
-					checkStatus(builder.post(Entity.entity(cacheInstanceBytes, MediaType.APPLICATION_OCTET_STREAM)));
+					checkStatus(builder.post(Entity.entity(toStringBuilder.toString(), MediaType.APPLICATION_OCTET_STREAM)));
 				} finally {
 					response.close();
 				}
