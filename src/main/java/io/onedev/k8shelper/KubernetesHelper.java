@@ -269,7 +269,8 @@ public class KubernetesHelper {
 				logger.info("Retrieving job context from {}...", serverUrl);
 				
 				Map<String, Object> jobContext;
-				Response response = checkStatus(builder.get());
+				Response response = checkStatus(builder.post(
+						Entity.entity(getWorkspace().getAbsolutePath(), MediaType.APPLICATION_OCTET_STREAM)));
 				try {
 					jobContext = SerializationUtils.deserialize(response.readEntity(byte[].class));
 				} finally {
