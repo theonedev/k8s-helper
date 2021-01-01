@@ -531,7 +531,7 @@ public class KubernetesHelper {
 				builder.header(HttpHeaders.AUTHORIZATION, BEARER + " " + jobToken);
 				
 				Map<String, Object> jobContext;
-				Response response = checkStatus(builder.get());
+				Response response = checkStatus(builder.post(Entity.entity(null, MediaType.APPLICATION_OCTET_STREAM)));
 				try {
 					jobContext = SerializationUtils.deserialize(response.readEntity(byte[].class));
 				} finally {
