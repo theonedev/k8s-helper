@@ -53,7 +53,7 @@ public class KubernetesHelper {
 	
 	private static final Logger logger = LoggerFactory.getLogger(KubernetesHelper.class);
 	
-	private static File getBuildHome() {
+	public static File getBuildHome() {
 		if (isWindows()) 
 			return new File("C:\\onedev-build");
 		else 
@@ -76,6 +76,14 @@ public class KubernetesHelper {
 	
 	private static File getWorkspace() {
 		return new File(getBuildHome(), "workspace");
+	}
+	
+	public static File getCommandHome() {
+		return new File(getBuildHome(), "command");
+	}
+	
+	public static File getMarkHome() {
+		return new File(KubernetesHelper.getBuildHome(), "mark");
 	}
 	
 	public static boolean isWindows() {
@@ -129,46 +137,76 @@ public class KubernetesHelper {
 		}
 	}
 	
-	private static void generateCommandScript(List<String> setupCommands, List<String> jobCommands) {
+	private static void generateCommandScript(String commandPosition, List<String> setupCommands, List<String> stepCommands) {
 		try {
-			File buildHome = getBuildHome();
+			File commandHome = getCommandHome();
 			if (isWindows()) {
-				File setupScriptFile = new File(buildHome, "setup-commands.bat");
+				File setupScriptFile = new File(commandHome, "setup-" + commandPosition + ".bat");
 				FileUtils.writeLines(setupScriptFile, setupCommands, "\r\n");
 				
-				File jobScriptFile = new File(buildHome, "job-commands.bat");
-				FileUtils.writeLines(jobScriptFile, jobCommands, "\r\n");
+				File stepScriptFile = new File(commandHome, "step-" + commandPosition + ".bat");
+				FileUtils.writeLines(stepScriptFile, stepCommands, "\r\n");
 				
-				File scriptFile = new File(buildHome, "commands.bat");
+				File scriptFile = new File(commandHome, commandPosition + ".bat");
+				String markPrefix = getMarkHome().getAbsolutePath() + "\\" + commandPosition;
 				List<String> scriptContent = Lists.newArrayList(
 						"@echo off",
+						":wait",
+						"if exist \"" + markPrefix + ".skip\" (",
+						"  echo Skipping step #" + commandPosition + "...",
+						"  echo " + LOG_END_MESSAGE,
+						"  goto :eof",
+						")",
+						"if exist \"" + markPrefix + ".start\" goto start",
+						"ping 127.0.0.1 -n 2 > nul",
+						"goto wait",
+						":start",
 						"cd " + getWorkspace().getAbsolutePath() 
-								+ " && cmd /c " + buildHome.getAbsolutePath() + "\\setup-commands.bat"
-								+ " && cmd /c echo Executing job commands..."
-								+ " && cmd /c " + buildHome.getAbsolutePath() + "\\job-commands.bat", 
-						"set last_exit_code=%errorlevel%",
-						"copy nul > " + buildHome.getAbsolutePath() + "\\job-finished",
+								+ " && cmd /c " + setupScriptFile.getAbsolutePath()
+								+ " && cmd /c echo Running step #" + commandPosition + "..."
+								+ " && cmd /c " + stepScriptFile.getAbsolutePath(), 
+						"set exit_code=%errorlevel%",
+						"if \"%exit_code%\"==\"0\" (",
+						"	copy /y nul " + markPrefix + ".successful > nul",
+						") else (",
+						"	copy /y nul " + markPrefix + ".failed > nul",
+						")",
 						"echo " + LOG_END_MESSAGE,
-						"exit %last_exit_code%");
+						"exit %exit_code%");
 				FileUtils.writeLines(scriptFile, scriptContent, "\r\n");
 			} else {
-				File setupScriptFile = new File(buildHome, "setup-commands.sh");
+				File setupScriptFile = new File(commandHome, "setup-" + commandPosition + ".sh");
 				FileUtils.writeLines(setupScriptFile, setupCommands, "\n");
 				
-				File jobScriptFile = new File(buildHome, "job-commands.sh");
-				FileUtils.writeLines(jobScriptFile, jobCommands, "\n");
+				File stepScriptFile = new File(commandHome, "step-" + commandPosition + ".sh");
+				FileUtils.writeLines(stepScriptFile, stepCommands, "\n");
 				
-				File scriptFile = new File(buildHome, "commands.sh");
+				File scriptFile = new File(commandHome, commandPosition + ".sh");
+				String markPrefix = getMarkHome().getAbsolutePath() + "/" + commandPosition;
 				List<String> wrapperScriptContent = Lists.newArrayList(
+						"while [ ! -f " + markPrefix + ".start ] && [ ! -f " + markPrefix + ".skip ]",
+						"do",
+						"  sleep 0.1",
+						"done",
+						"if [ -f " + markPrefix + ".skip ]",
+						"then",
+						"  echo \"Skipping step #" + commandPosition + "...\"",
+						"  echo " + LOG_END_MESSAGE,
+						"  exit 0",
+						"fi",
 						"cd " + getWorkspace().getAbsolutePath() 
-								+ " && sh " + buildHome.getAbsolutePath() + "/setup-commands.sh"
-								+ " && echo Executing job commands..." 
-								+ " && sh " + buildHome.getAbsolutePath() + "/job-commands.sh", 
-						"lastExitCode=\"$?\"", 
-						"touch " + buildHome.getAbsolutePath() + "/job-finished",
+								+ " && sh " + setupScriptFile.getAbsolutePath()
+								+ " && echo \"Running step #" + commandPosition + "...\"" 
+								+ " && sh " + stepScriptFile.getAbsolutePath(), 
+						"exitCode=\"$?\"", 
+						"if [ $exitCode -eq 0 ]",
+						"then",
+						"  touch " + markPrefix + ".successful",
+						"else",
+						"  touch " + markPrefix + ".failed",
+						"fi",						
 						"echo " + LOG_END_MESSAGE,
-						"exit $lastExitCode"
-						);
+						"exit $exitCode");
 				FileUtils.writeLines(scriptFile, wrapperScriptContent, "\n");
 			}
 		} catch (IOException e) {
@@ -241,6 +279,8 @@ public class KubernetesHelper {
 		Client client = ClientBuilder.newClient();
 		try {
 			File cacheHome = getCacheHome();
+			FileUtils.createDir(getCommandHome());
+			FileUtils.createDir(getMarkHome());
 			if (test) {
 				logger.info("Testing server connectivity with '{}'...", serverUrl);
 				WebTarget target = client.target(serverUrl).path("rest/k8s/test");
@@ -258,9 +298,9 @@ public class KubernetesHelper {
 				}
 				FileUtils.createDir(getWorkspace());
 				if (isWindows())
-					generateCommandScript(Lists.newArrayList(), Lists.newArrayList("@echo off", "echo hello from container"));
+					generateCommandScript("1", Lists.newArrayList(), Lists.newArrayList("@echo off", "echo hello from container"));
 				else
-					generateCommandScript(Lists.newArrayList(), Lists.newArrayList("echo hello from container"));
+					generateCommandScript("1", Lists.newArrayList(), Lists.newArrayList("echo hello from container"));
 			} else {
 				WebTarget target = client.target(serverUrl).path("rest/k8s/job-context");
 				Invocation.Builder builder =  target.request();
@@ -330,7 +370,7 @@ public class KubernetesHelper {
 					
 					File userHome;
 					if (SystemUtils.IS_OS_WINDOWS)
-						userHome = new File("C:\\Users\\ContainerAdministrator");
+						userHome = new File(System.getProperty("user.home"));
 					else
 						userHome = new File("/root");
 					
@@ -389,34 +429,44 @@ public class KubernetesHelper {
 					
 				}	
 				
-				List<String> setupCommands = new ArrayList<>();
-				if (isWindows()) {
-					setupCommands.add("@echo off");							
-					setupCommands.add("xcopy /Y /S /K /Q /H /R C:\\Users\\ContainerAdministrator\\onedev\\* C:\\Users\\ContainerAdministrator>nul");
-				} else { 
-					setupCommands.add("cp -r -f -p /root/onedev/. /root");
-				}
+				logger.info("Generating command scripts...");
 				
-				for (Map.Entry<CacheInstance, String> entry: cacheAllocations.entrySet()) {
-					if (!PathUtils.isCurrent(entry.getValue())) {
-						String link = PathUtils.resolve(workspace.getAbsolutePath(), entry.getValue());
-						File linkTarget = entry.getKey().getDirectory(cacheHome);
-						// create possible missing parent directories
+				List<Action> actions = (List<Action>) jobContext.get("actions");
+				new CompositeExecutable(actions).traverse(new CommandVisitor<Void>() {
+
+					@Override
+					public Void visit(CommandExecutable executable, List<Integer> position) {
+						List<String> setupCommands = new ArrayList<>();
 						if (isWindows()) {
-							setupCommands.add(String.format("if not exist \"%s\" mkdir \"%s\"", link, link)); 
-							setupCommands.add(String.format("rmdir /q /s \"%s\"", link));							
-							setupCommands.add(String.format("mklink /D \"%s\" \"%s\"", link, linkTarget.getAbsolutePath()));
-						} else {
-							setupCommands.add(String.format("mkdir -p \"%s\"", link)); 
-							setupCommands.add(String.format("rm -rf \"%s\"", link));
-							setupCommands.add(String.format("ln -s \"%s\" \"%s\"", linkTarget.getAbsolutePath(), link));
+							setupCommands.add("@echo off");							
+							setupCommands.add("xcopy /Y /S /K /Q /H /R C:\\Users\\%USERNAME%\\onedev\\* C:\\Users\\%USERNAME% > nul");
+						} else { 
+							setupCommands.add("cp -r -f -p /root/onedev/. /root");
 						}
+						
+						for (Map.Entry<CacheInstance, String> entry: cacheAllocations.entrySet()) {
+							if (!PathUtils.isCurrent(entry.getValue())) {
+								String link = PathUtils.resolve(workspace.getAbsolutePath(), entry.getValue());
+								File linkTarget = entry.getKey().getDirectory(cacheHome);
+								// create possible missing parent directories
+								if (isWindows()) {
+									setupCommands.add(String.format("if not exist \"%s\" mkdir \"%s\"", link, link)); 
+									setupCommands.add(String.format("rmdir /q /s \"%s\"", link));							
+									setupCommands.add(String.format("mklink /D \"%s\" \"%s\"", link, linkTarget.getAbsolutePath()));
+								} else {
+									setupCommands.add(String.format("mkdir -p \"%s\"", link)); 
+									setupCommands.add(String.format("rm -rf \"%s\"", link));
+									setupCommands.add(String.format("ln -s \"%s\" \"%s\"", linkTarget.getAbsolutePath(), link));
+								}
+							}
+						}
+						
+						generateCommandScript(describe(position), setupCommands, executable.getCommands());
+						
+						return null;
 					}
-				}
-				
-				List<String> jobCommands = (List<String>) jobContext.get("commands");
-				
-				generateCommandScript(setupCommands, jobCommands);
+					
+				}, new ArrayList<>());
 				
 				logger.info("Downloading job dependencies from {}...", serverUrl);
 				
@@ -444,6 +494,10 @@ public class KubernetesHelper {
 		} finally {
 			client.close();
 		}
+	}
+	
+	public static String describe(List<Integer> commandPosition) {
+		return StringUtils.join(commandPosition, ".");
 	}
 	
 	private static Response checkStatus(Response response) {
@@ -511,21 +565,51 @@ public class KubernetesHelper {
 	public static void sidecar(String serverUrl, String jobToken, boolean test) {
 		installJVMCert();
 		
-		File finishedFile = new File(getBuildHome(), "job-finished");
-		while (!finishedFile.exists()) {
-			try {
-				Thread.sleep(1000);
-			} catch (InterruptedException e) {
-				throw new RuntimeException(e);
+		CommandHandler commandHandler = new CommandHandler() {
+
+			@Override
+			public boolean execute(CommandExecutable executable, List<Integer> position) {
+				File file = new File(getMarkHome(), describe(position) + ".start");
+				try {
+					if (!file.createNewFile()) 
+						throw new RuntimeException("Failed to create file: " + file.getAbsolutePath());
+				} catch (IOException e) {
+					throw new RuntimeException(e);
+				}
+			
+				File successfulFile = new File(getMarkHome(), describe(position) + ".successful");
+				File failedFile = new File(getMarkHome(), describe(position) + ".failed");
+				while (!successfulFile.exists() && !failedFile.exists()) {
+					try {
+						Thread.sleep(100);
+					} catch (InterruptedException e) {
+						throw new RuntimeException(e);
+					}
+				}
+				return successfulFile.exists();
 			}
-		}
+
+			@Override
+			public void skip(CommandExecutable executable, List<Integer> position) {
+				File file = new File(getMarkHome(), describe(position) + ".skip");
+				try {
+					if (!file.createNewFile()) 
+						throw new RuntimeException("Failed to create file: " + file.getAbsolutePath());
+				} catch (IOException e) {
+					throw new RuntimeException(e);
+				}
+			}
+			
+		};
 		
-		if (!test) {
+		if (test) {
+			CommandExecutable executable = new CommandExecutable(
+					"this does not matter", Lists.newArrayList("this does not matter"));
+			executable.execute(commandHandler, Lists.newArrayList(1));
+		} else {
 			Client client = ClientBuilder.newClient();
 			client.property(ClientProperties.REQUEST_ENTITY_PROCESSING, "CHUNKED");
 			try {
-				logger.info("Uploading job outcomes to '{}'...", serverUrl);
-				
 				WebTarget target = client.target(serverUrl).path("rest/k8s/job-context");
 				Invocation.Builder builder =  target.request();
 				builder.header(HttpHeaders.AUTHORIZATION, BEARER + " " + jobToken);
@@ -537,6 +621,11 @@ public class KubernetesHelper {
 				} finally {
 					response.close();
 				}
+				
+				List<Action> actions = (List<Action>) jobContext.get("actions");
+				new CompositeExecutable(actions).execute(commandHandler, new ArrayList<>());
+				
+				logger.info("Uploading job outcomes to '{}'...", serverUrl);
 				
 				Set<String> includes = (Set<String>) jobContext.get("collectFiles.includes");
 				Set<String> excludes = (Set<String>) jobContext.get("collectFiles.excludes");
@@ -576,7 +665,7 @@ public class KubernetesHelper {
 			} finally {
 				client.close();
 			}
-		}
+		} 
 	}
 	
 }

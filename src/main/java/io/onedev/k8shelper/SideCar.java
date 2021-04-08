@@ -19,7 +19,7 @@ public class SideCar {
 				throw new RuntimeException("Environment '" + KubernetesHelper.ENV_JOB_TOKEN + "' is not defined");
 			
 			KubernetesHelper.sidecar(serverUrl, jobToken, args.length > 0);
-			
+
 			logger.info(KubernetesHelper.LOG_END_MESSAGE);
 			System.exit(0);
 		} catch (Exception e) {
