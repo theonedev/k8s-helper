@@ -6,21 +6,21 @@ public class Action implements Serializable {
 
 	private static final long serialVersionUID = 1L;
 
-	private final boolean executeAlways;
+	private final ExecuteCondition condition;
 	
 	private final Executable executable;
 	
-	public Action(boolean executeAlways, Executable executable) {
-		this.executeAlways = executeAlways;
+	public Action(Executable executable, ExecuteCondition condition) {
 		this.executable = executable;
-	}
-
-	public boolean isExecuteAlways() {
-		return executeAlways;
+		this.condition = condition;
 	}
 
 	public Executable getExecutable() {
 		return executable;
+	}
+
+	public ExecuteCondition getCondition() {
+		return condition;
 	}
 	
 }

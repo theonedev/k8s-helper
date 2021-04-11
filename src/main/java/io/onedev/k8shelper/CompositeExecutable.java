@@ -2,6 +2,7 @@ package io.onedev.k8shelper;
 
 import java.util.ArrayList;
 import java.util.List;
+import static io.onedev.k8shelper.ExecuteCondition.*;
 
 public class CompositeExecutable implements Executable {
 
@@ -24,7 +25,7 @@ public class CompositeExecutable implements Executable {
 			Action action = actions.get(i);
 			List<Integer> newPosition = new ArrayList<>(position);
 			newPosition.add(i+1);
-			if (action.isExecuteAlways() || !failed) {
+			if (action.getCondition() == ALWAYS || action.getCondition() == PREVIOUS_WAS_SUCCESSFUL && !failed ) {
 				if (!action.getExecutable().execute(handler, newPosition))
 					failed = true;
 			} else {
