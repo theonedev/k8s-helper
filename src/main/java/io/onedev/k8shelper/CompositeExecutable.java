@@ -25,7 +25,7 @@ public class CompositeExecutable implements Executable {
 			Action action = actions.get(i);
 			List<Integer> newPosition = new ArrayList<>(position);
 			newPosition.add(i+1);
-			if (action.getCondition() == ALWAYS || action.getCondition() == PREVIOUS_WAS_SUCCESSFUL && !failed ) {
+			if (action.getCondition() == ALWAYS || action.getCondition() == ALL_PREVIOUS_STEPS_WERE_SUCCESSFUL && !failed ) {
 				if (!action.getExecutable().execute(handler, newPosition))
 					failed = true;
 			} else {

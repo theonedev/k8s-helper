@@ -4,7 +4,7 @@ import io.onedev.commons.utils.StringUtils;
 
 public enum ExecuteCondition {
 
-	ALWAYS, NEVER, PREVIOUS_WAS_SUCCESSFUL;
+	ALL_PREVIOUS_STEPS_WERE_SUCCESSFUL, ALWAYS, NEVER;
 
 	public String getDisplayName() {
 		return StringUtils.capitalize(name().replace('_', ' ').toLowerCase());
