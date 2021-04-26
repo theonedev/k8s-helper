@@ -5,16 +5,20 @@ import java.io.FileFilter;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.nio.ByteBuffer;
 import java.nio.charset.Charset;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.util.ArrayList;
+import java.util.Base64;
+import java.util.Collection;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 import java.util.function.Consumer;
+import java.util.stream.Collectors;
 
 import javax.ws.rs.client.Client;
 import javax.ws.rs.client.ClientBuilder;
@@ -33,6 +37,7 @@ import org.glassfish.jersey.client.ClientProperties;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import com.google.common.base.Splitter;
 import com.google.common.collect.Lists;
 
 import io.onedev.commons.utils.FileUtils;
@@ -87,7 +92,7 @@ public class KubernetesHelper {
 	}
 	
 	private static File getMarkHome() {
-		return new File(KubernetesHelper.getBuildHome(), "mark");
+		return new File(getBuildHome(), "mark");
 	}
 	
 	private static boolean isWindows() {
@@ -264,6 +269,23 @@ public class KubernetesHelper {
 		};
 	}
 	
+	public static String encodeCommandArg(Collection<String> decoded) {
+		Collection<String> base64 = new ArrayList<>();
+		for (String each: decoded) 
+			base64.add(Base64.getEncoder().encodeToString(each.getBytes(StandardCharsets.UTF_8)));
+		String encoded = StringUtils.join(base64, "-");
+		if (encoded.length() == 0)
+			encoded = "-";
+		return encoded;
+	}
+	
+	public static Collection<String> decodeCommandArg(String encoded) {
+		Collection<String> decoded = new ArrayList<>();
+		for (String each: Splitter.on('-').trimResults().omitEmptyStrings().split(encoded)) 
+			decoded.add(new String(Base64.getDecoder().decode(each), StandardCharsets.UTF_8));
+		return decoded;
+	}
+	
 	public static void installGitCert(File certFile, List<String> certLines, 
 			Commandline git, LineConsumer infoLogger, LineConsumer errorLogger) {
 		try {
@@ -290,12 +312,9 @@ public class KubernetesHelper {
 				WebTarget target = client.target(serverUrl).path("rest/k8s/test");
 				Invocation.Builder builder =  target.request();
 				builder.header(HttpHeaders.AUTHORIZATION, BEARER + " " + jobToken);
-				Response response = builder.get();
-				try {
+				try (Response response = builder.get()) {
 					checkStatus(response);
-				} finally {
-					response.close();
-				}
+				} 
 				File tempFile = null;
 				try {
 					tempFile = File.createTempFile("test", null, cacheHome);
@@ -318,14 +337,11 @@ public class KubernetesHelper {
 				logger.info("Retrieving job context from {}...", serverUrl);
 				
 				Map<String, Object> jobContext;
-				Response response = builder.post(
-						Entity.entity(getWorkspace().getAbsolutePath(), MediaType.APPLICATION_OCTET_STREAM));
 				byte[] jobContextBytes;
-				try {
+				try (Response response = builder.post(
+						Entity.entity(getWorkspace().getAbsolutePath(), MediaType.APPLICATION_OCTET_STREAM))) {
 					checkStatus(response);
 					jobContextBytes = response.readEntity(byte[].class);
-				} finally {
-					response.close();
 				}
 				
 				FileUtils.writeByteArrayToFile(getJobContextFile(), jobContextBytes);
@@ -339,14 +355,11 @@ public class KubernetesHelper {
 				builder =  target.request();
 				builder.header(HttpHeaders.AUTHORIZATION, BEARER + " " + jobToken);
 				Map<CacheInstance, String> cacheAllocations;
-				response = builder.post(Entity.entity(
+				try (Response response = builder.post(Entity.entity(
 						new CacheAllocationRequest(new Date(), getCacheInstances(cacheHome)).toString(),
-						MediaType.APPLICATION_OCTET_STREAM));
-				try {
+						MediaType.APPLICATION_OCTET_STREAM))) {
 					checkStatus(response);
 					cacheAllocations = SerializationUtils.deserialize(response.readEntity(byte[].class));
-				} finally {
-					response.close();
 				}
 				
 				preprocess(cacheHome, cacheAllocations, new Consumer<File>() {
@@ -446,10 +459,10 @@ public class KubernetesHelper {
 				logger.info("Generating command scripts...");
 				
 				List<Action> actions = (List<Action>) jobContext.get("actions");
-				new CompositeExecutable(actions).traverse(new CommandVisitor<Void>() {
+				new CompositeExecutable(actions).traverse(new LeafVisitor<Void>() {
 
 					@Override
-					public Void visit(CommandExecutable executable, List<Integer> position) {
+					public Void visit(LeafExecutable executable, List<Integer> position) {
 						List<String> setupCommands = new ArrayList<>();
 						if (isWindows()) {
 							setupCommands.add("@echo off");							
@@ -475,7 +488,32 @@ public class KubernetesHelper {
 							}
 						}
 						
-						generateCommandScript(describe(position), setupCommands, executable.getCommands());
+						String positionStr = stringifyPosition(position);
+
+						List<String> commands;
+						
+						if (executable instanceof CommandExecutable) {
+							commands = ((CommandExecutable) executable).getCommands();
+						} else {
+							ServerExecutable serverExecutable = (ServerExecutable) executable;
+							
+							String classPath;
+							if (SystemUtils.IS_OS_LINUX) 
+								classPath = "/k8s-helper/*";
+							else 
+								classPath = "C:\\k8s-helper\\*";
+							
+							String includeFiles = encodeCommandArg(serverExecutable.getIncludeFiles());
+							String excludeFiles = encodeCommandArg(serverExecutable.getExcludeFiles());
+							String command = String.format("java -classpath \"%s\" io.onedev.k8shelper.RunServerStep %s %s %s", 
+									classPath, positionStr, includeFiles, excludeFiles);
+							if (SystemUtils.IS_OS_LINUX)
+								commands = Lists.newArrayList(command);
+							else
+								commands = Lists.newArrayList("@echo off", command);
+						}
+						
+						generateCommandScript(positionStr, setupCommands, commands);
 						
 						return null;
 					}
@@ -488,20 +526,11 @@ public class KubernetesHelper {
 				builder =  target.request();
 				builder.header(HttpHeaders.AUTHORIZATION, BEARER + " " + jobToken);
 				
-				response = builder.get();
-				try {
+				try (Response response = builder.get()){
 					checkStatus(response);
-					InputStream is = response.readEntity(InputStream.class);
-					try {
+					try (InputStream is = response.readEntity(InputStream.class)) {
 						TarUtils.untar(is, workspace);
-					} finally {
-						try {
-							is.close();
-						} catch (IOException e) {
-						}
-					}
-				} finally {
-					response.close();
+					} 
 				}
 				logger.info("Job workspace initialized");
 			}
@@ -512,11 +541,18 @@ public class KubernetesHelper {
 		}
 	}
 	
-	public static String describe(List<Integer> commandPosition) {
-		return StringUtils.join(commandPosition, ".");
+	public static String stringifyPosition(List<Integer> position) {
+		return StringUtils.join(position, ".");
 	}
 	
-	private static Response checkStatus(Response response) {
+	public static List<Integer> parsePosition(String position) {
+		return Splitter.on('.').splitToList(position)
+				.stream()
+				.map(it->Integer.parseInt(it))
+				.collect(Collectors.toList());
+	}
+	
+	private static void checkStatus(Response response) {
 		int status = response.getStatus();
 		if (status != 200 && status != 204) {
 			String errorMessage = response.readEntity(String.class);
@@ -527,9 +563,7 @@ public class KubernetesHelper {
 				throw new RuntimeException("Http request failed with status " + status 
 						+ ", check server log for detaiils");
 			}
-		} else {
-			return response;
-		}
+		} 
 	}
 	
 	public static void clone(File workspace, String cloneUrl, String commitHash, 
@@ -579,11 +613,13 @@ public class KubernetesHelper {
 
 	@SuppressWarnings("unchecked")
 	public static void sidecar(String serverUrl, String jobToken, boolean test) {
-		CommandHandler commandHandler = new CommandHandler() {
+		LeafHandler commandHandler = new LeafHandler() {
 
 			@Override
-			public boolean execute(CommandExecutable executable, List<Integer> position) {
-				File file = new File(getMarkHome(), describe(position) + ".start");
+			public boolean execute(LeafExecutable executable, List<Integer> position) {
+				String positionStr = stringifyPosition(position);
+				
+				File file = new File(getMarkHome(), positionStr + ".start");
 				try {
 					if (!file.createNewFile()) 
 						throw new RuntimeException("Failed to create file: " + file.getAbsolutePath());
@@ -591,8 +627,8 @@ public class KubernetesHelper {
 					throw new RuntimeException(e);
 				}
 			
-				File successfulFile = new File(getMarkHome(), describe(position) + ".successful");
-				File failedFile = new File(getMarkHome(), describe(position) + ".failed");
+				File successfulFile = new File(getMarkHome(), positionStr + ".successful");
+				File failedFile = new File(getMarkHome(), positionStr + ".failed");
 				while (!successfulFile.exists() && !failedFile.exists()) {
 					try {
 						Thread.sleep(100);
@@ -604,8 +640,8 @@ public class KubernetesHelper {
 			}
 
 			@Override
-			public void skip(CommandExecutable executable, List<Integer> position) {
-				File file = new File(getMarkHome(), describe(position) + ".skip");
+			public void skip(LeafExecutable executable, List<Integer> position) {
+				File file = new File(getMarkHome(), stringifyPosition(position) + ".skip");
 				try {
 					if (!file.createNewFile()) 
 						throw new RuntimeException("Failed to create file: " + file.getAbsolutePath());
@@ -636,40 +672,15 @@ public class KubernetesHelper {
 			installJVMCert();
 			
 			Client client = ClientBuilder.newClient();
-			client.property(ClientProperties.REQUEST_ENTITY_PROCESSING, "CHUNKED");
 			try {
-				logger.info("Uploading job outcomes to '{}'...", serverUrl);
-				
-				Set<String> includes = (Set<String>) jobContext.get("collectFiles.includes");
-				Set<String> excludes = (Set<String>) jobContext.get("collectFiles.excludes");
-				
-				WebTarget target = client.target(serverUrl).path("rest/k8s/upload-outcomes");
-
-				StreamingOutput os = new StreamingOutput() {
-
-					@Override
-				   public void write(OutputStream os) throws IOException {
-						TarUtils.tar(getWorkspace(), includes, excludes, os);
-				   }				   
-				   
-				};
-				Invocation.Builder builder = target.request();
-				builder.header(HttpHeaders.AUTHORIZATION, BEARER + " " + jobToken);
-				Response response = builder.post(Entity.entity(os, MediaType.APPLICATION_OCTET_STREAM_TYPE));
-				try {
-					checkStatus(response);
-				} finally {
-					response.close();
-				}
-				
 				logger.info("Reporting job caches to '{}'...", serverUrl);
-				target = client.target(serverUrl).path("rest/k8s/report-job-caches");
-				builder =  target.request();
+				WebTarget target = client.target(serverUrl).path("rest/k8s/report-job-caches");
+				Invocation.Builder builder = target.request();
 				builder.header(HttpHeaders.AUTHORIZATION, BEARER + " " + jobToken);
 				StringBuilder toStringBuilder = new StringBuilder();
 				for (CacheInstance instance: getCacheInstances(getCacheHome()).keySet()) 
 					toStringBuilder.append(instance.toString()).append(";");
-				response = builder.post(Entity.entity(toStringBuilder.toString(), MediaType.APPLICATION_OCTET_STREAM));
+				Response response = builder.post(Entity.entity(toStringBuilder.toString(), MediaType.APPLICATION_OCTET_STREAM));
 				try {
 					checkStatus(response);
 				} finally {
@@ -681,4 +692,44 @@ public class KubernetesHelper {
 		} 
 	}
 	
+	public static void runServerStep(String serverUrl, String jobToken, String positionStr, 
+			String encodedIncludeFiles, String encodedExcludeFiles) {
+		installJVMCert();
+		
+		Client client = ClientBuilder.newClient();
+		client.property(ClientProperties.REQUEST_ENTITY_PROCESSING, "CHUNKED");
+		try {
+			WebTarget target = client.target(serverUrl).path("rest/k8s/run-server-step");
+			Invocation.Builder builder =  target.request();
+			builder.header(HttpHeaders.AUTHORIZATION, BEARER + " " + jobToken);
+
+			List<Integer> position = parsePosition(positionStr);
+			Collection<String> includeFiles = decodeCommandArg(encodedIncludeFiles);
+			Collection<String> excludeFiles = decodeCommandArg(encodedExcludeFiles);
+			
+			StreamingOutput os = new StreamingOutput() {
+
+				@Override
+			   public void write(OutputStream os) throws IOException {
+					os.write(ByteBuffer.allocate(4).putInt(position.size()).array());
+					for (int each: position) {
+						os.write(ByteBuffer.allocate(4).putInt(each).array());
+					}
+					TarUtils.tar(getWorkspace(), includeFiles, excludeFiles, os);
+			   }				   
+			   
+			};
+			
+			try (Response response = builder.post(Entity.entity(os, MediaType.APPLICATION_OCTET_STREAM))) {
+				checkStatus(response);
+				byte[] logBytes = response.readEntity(byte[].class);
+				List<String> logMessages = SerializationUtils.deserialize(logBytes);
+				for (String logMessage: logMessages)
+					logger.info(logMessage);
+			}
+		} finally {
+			client.close();
+		}
+	}
+		
 }

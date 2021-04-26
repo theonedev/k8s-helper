@@ -2,7 +2,7 @@ package io.onedev.k8shelper;
 
 import java.util.List;
 
-public class CommandExecutable implements Executable {
+public class CommandExecutable extends LeafExecutable {
 
 	private static final long serialVersionUID = 1L;
 
@@ -23,19 +23,4 @@ public class CommandExecutable implements Executable {
 		return commands;
 	}
 
-	@Override
-	public boolean execute(CommandHandler handler, List<Integer> position) {
-		return handler.execute(this, position);
-	}
-	
-	@Override
-	public void skip(CommandHandler handler, List<Integer> position) {
-		handler.skip(this, position);
-	}
-
-	@Override
-	public <T> T traverse(CommandVisitor<T> visitor, List<Integer> position) {
-		return visitor.visit(this, position);
-	}
-	
 }

@@ -19,7 +19,7 @@ public class CompositeExecutable implements Executable {
 	}
 
 	@Override
-	public boolean execute(CommandHandler handler, List<Integer> position) {
+	public boolean execute(LeafHandler handler, List<Integer> position) {
 		boolean failed = false;
 		for (int i = 0; i<actions.size(); i++) {
 			Action action = actions.get(i);
@@ -36,7 +36,7 @@ public class CompositeExecutable implements Executable {
 	}
 
 	@Override
-	public void skip(CommandHandler handler, List<Integer> position) {
+	public void skip(LeafHandler handler, List<Integer> position) {
 		for (int i=0; i<actions.size(); i++) { 
 			List<Integer> newPosition = new ArrayList<>(position);
 			newPosition.add(i+1);
@@ -45,7 +45,7 @@ public class CompositeExecutable implements Executable {
 	}
 
 	@Override
-	public <T> T traverse(CommandVisitor<T> visitor, List<Integer> position) {
+	public <T> T traverse(LeafVisitor<T> visitor, List<Integer> position) {
 		for (int i=0; i<actions.size(); i++) {
 			List<Integer> newPosition = new ArrayList<>(position);
 			newPosition.add(i+1);

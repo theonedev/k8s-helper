@@ -5,10 +5,10 @@ import java.util.List;
 
 public interface Executable extends Serializable {
 
-	boolean execute(CommandHandler handler, List<Integer> position);
+	boolean execute(LeafHandler handler, List<Integer> position);
 	
-	void skip(CommandHandler handler, List<Integer> position);
+	void skip(LeafHandler handler, List<Integer> position);
 	
-	<T> T traverse(CommandVisitor<T> visitor, List<Integer> position);
+	<T> T traverse(LeafVisitor<T> visitor, List<Integer> position);
 	
 }
