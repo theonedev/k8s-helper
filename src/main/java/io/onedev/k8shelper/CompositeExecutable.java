@@ -2,6 +2,10 @@ package io.onedev.k8shelper;
 
 import java.util.ArrayList;
 import java.util.List;
+
+import com.google.common.base.Joiner;
+import com.google.common.base.Preconditions;
+
 import static io.onedev.k8shelper.ExecuteCondition.*;
 
 public class CompositeExecutable implements Executable {
@@ -24,8 +28,9 @@ public class CompositeExecutable implements Executable {
 		for (int i = 0; i<actions.size(); i++) {
 			Action action = actions.get(i);
 			List<Integer> newPosition = new ArrayList<>(position);
-			newPosition.add(i+1);
-			if (action.getCondition() == ALWAYS || action.getCondition() == ALL_PREVIOUS_STEPS_WERE_SUCCESSFUL && !failed ) {
+			newPosition.add(i);
+			if (action.getCondition() == ALWAYS 
+					|| action.getCondition() == ALL_PREVIOUS_STEPS_WERE_SUCCESSFUL && !failed ) {
 				if (!action.getExecutable().execute(handler, newPosition))
 					failed = true;
 			} else {
@@ -39,7 +44,7 @@ public class CompositeExecutable implements Executable {
 	public void skip(LeafHandler handler, List<Integer> position) {
 		for (int i=0; i<actions.size(); i++) { 
 			List<Integer> newPosition = new ArrayList<>(position);
-			newPosition.add(i+1);
+			newPosition.add(i);
 			actions.get(i).getExecutable().skip(handler, newPosition);
 		}
 	}
@@ -48,12 +53,30 @@ public class CompositeExecutable implements Executable {
 	public <T> T traverse(LeafVisitor<T> visitor, List<Integer> position) {
 		for (int i=0; i<actions.size(); i++) {
 			List<Integer> newPosition = new ArrayList<>(position);
-			newPosition.add(i+1);
+			newPosition.add(i);
 			T result = actions.get(i).getExecutable().traverse(visitor, newPosition);
 			if (result != null)
 				return result;
 		}
 		return null;
+	}
+	
+	public List<String> getNames(List<Integer> position) {
+		Preconditions.checkArgument(!position.isEmpty());
+		
+		List<String> names = new ArrayList<>();
+		List<Integer> positionCopy = new ArrayList<>(position);
+		Action action = actions.get(positionCopy.remove(0));
+		names.add(action.getName());
+		if (!positionCopy.isEmpty()) {
+			CompositeExecutable executable = (CompositeExecutable) action.getExecutable();
+			names.addAll(executable.getNames(positionCopy));
+		}
+		return names;
+	}
+	
+	public String getNamesAsString(List<Integer> position) {
+		return Joiner.on(" -> ").join(getNames(position));
 	}
 	
 }

@@ -5,9 +5,9 @@ import org.slf4j.LoggerFactory;
 
 import com.google.common.base.Preconditions;
 
-public class RunServerStep {
+public class CheckoutCode {
 
-	private static final Logger logger = LoggerFactory.getLogger(RunServerStep.class);
+	private static final Logger logger = LoggerFactory.getLogger(CheckoutCode.class);
 	
 	public static void main(String[] args) {
 		int exitCode = 0;
@@ -19,7 +19,8 @@ public class RunServerStep {
 			if (jobToken == null)
 				throw new RuntimeException("Environment '" + KubernetesHelper.ENV_JOB_TOKEN + "' is not defined");
 
-			KubernetesHelper.runServerStep(serverUrl, jobToken, args[0], args[1], args[2], args[3]);
+			KubernetesHelper.checkoutCode(serverUrl, jobToken, args[0], 
+					Integer.parseInt(args[1]), CloneInfo.fromString(args[2]));
 		} catch (Exception e) {
 			logger.error("Error executing step", e);
 			exitCode = 1;

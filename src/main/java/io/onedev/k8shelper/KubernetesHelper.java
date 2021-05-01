@@ -7,17 +7,20 @@ import java.io.InputStream;
 import java.io.OutputStream;
 import java.nio.ByteBuffer;
 import java.nio.charset.Charset;
-import java.nio.charset.StandardCharsets;
+import static java.nio.charset.StandardCharsets.UTF_8;
 import java.nio.file.Files;
 import java.util.ArrayList;
 import java.util.Base64;
 import java.util.Collection;
 import java.util.Date;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.function.Consumer;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 import javax.ws.rs.client.Client;
@@ -30,6 +33,7 @@ import javax.ws.rs.core.MediaType;
 import javax.ws.rs.core.Response;
 import javax.ws.rs.core.StreamingOutput;
 
+import org.apache.commons.compress.utils.IOUtils;
 import org.apache.commons.lang3.SerializationUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.SystemUtils;
@@ -38,8 +42,11 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import com.google.common.base.Splitter;
+import com.google.common.base.Throwables;
 import com.google.common.collect.Lists;
 
+import io.onedev.commons.utils.ExceptionUtils;
+import io.onedev.commons.utils.ExplicitException;
 import io.onedev.commons.utils.FileUtils;
 import io.onedev.commons.utils.PathUtils;
 import io.onedev.commons.utils.TarUtils;
@@ -55,6 +62,16 @@ public class KubernetesHelper {
 	public static final String BEARER = "Bearer";
 	
 	public static final String LOG_END_MESSAGE = "===== End of OneDev K8s Helper Log =====";
+	
+	public static final String BUILD_VERSION = "buildVersion";
+	
+	public static final String WORKSPACE = "workspace";
+	
+	public static final String PLACEHOLDER_PREFIX = "<&onedev#";
+	
+	public static final String PLACEHOLDER_SUFFIX = "#onedev&>";
+	
+	private static final Pattern PLACEHOLDER_PATTERN = Pattern.compile(PLACEHOLDER_PREFIX + "(.*?)" + PLACEHOLDER_SUFFIX);
 	
 	private static final Logger logger = LoggerFactory.getLogger(KubernetesHelper.class);
 	
@@ -84,7 +101,7 @@ public class KubernetesHelper {
 	}
 	
 	private static File getWorkspace() {
-		return new File(getBuildHome(), "workspace");
+		return new File(getBuildHome(), WORKSPACE);
 	}
 	
 	private static File getCommandHome() {
@@ -146,25 +163,38 @@ public class KubernetesHelper {
 		}
 	}
 	
-	private static void generateCommandScript(String commandPosition, List<String> setupCommands, List<String> stepCommands) {
+	private static void generateCommandScript(List<Integer> position, String stepNames, 
+			List<String> setupCommands, List<String> stepCommands) {
 		try {
+			String positionStr = stringifyPosition(position);
 			File commandHome = getCommandHome();
 			if (isWindows()) {
-				File setupScriptFile = new File(commandHome, "setup-" + commandPosition + ".bat");
+				StringBuilder escapedStepNames = new StringBuilder();
+				for (int i=0; i<stepNames.length(); i++)
+					escapedStepNames.append('^').append(stepNames.charAt(i));
+				
+				File setupScriptFile = new File(commandHome, "setup-" + positionStr + ".bat");
 				FileUtils.writeLines(setupScriptFile, setupCommands, "\r\n");
 				
-				File stepScriptFile = new File(commandHome, "step-" + commandPosition + ".bat");
+				File stepScriptFile = new File(commandHome, "step-" + positionStr + ".bat");
 				FileUtils.writeLines(stepScriptFile, stepCommands, "\r\n");
 				
-				File scriptFile = new File(commandHome, commandPosition + ".bat");
-				String markPrefix = getMarkHome().getAbsolutePath() + "\\" + commandPosition;
+				File scriptFile = new File(commandHome, positionStr + ".bat");
+				String markPrefix = getMarkHome().getAbsolutePath() + "\\" + positionStr;
 				List<String> scriptContent = Lists.newArrayList(
 						"@echo off",
 						":wait",
 						"if exist \"" + markPrefix + ".skip\" (",
-						"  echo Skipping step #" + commandPosition + "...",
+						"  echo Skipping step ^\"" + escapedStepNames + "^\"...",
 						"  echo " + LOG_END_MESSAGE,
 						"  goto :eof",
+						")",
+						"if exist \"" + markPrefix + ".error\" (",
+						"  echo Running step ^\"" + escapedStepNames + "^\"...",
+						"  type " + markPrefix + ".error",
+						"  copy /y nul " + markPrefix + ".failed > nul",
+						"  echo " + LOG_END_MESSAGE,
+						"  exit 1",
 						")",
 						"if exist \"" + markPrefix + ".start\" goto start",
 						"ping 127.0.0.1 -n 2 > nul",
@@ -172,7 +202,7 @@ public class KubernetesHelper {
 						":start",
 						"cd " + getWorkspace().getAbsolutePath() 
 								+ " && cmd /c " + setupScriptFile.getAbsolutePath()
-								+ " && cmd /c echo Running step #" + commandPosition + "..."
+								+ " && cmd /c echo Running step ^\"" + escapedStepNames + "^\"..."
 								+ " && cmd /c " + stepScriptFile.getAbsolutePath(), 
 						"set exit_code=%errorlevel%",
 						"if \"%exit_code%\"==\"0\" (",
@@ -184,28 +214,38 @@ public class KubernetesHelper {
 						"exit %exit_code%");
 				FileUtils.writeLines(scriptFile, scriptContent, "\r\n");
 			} else {
-				File setupScriptFile = new File(commandHome, "setup-" + commandPosition + ".sh");
+				String escapedStepNames = stepNames.replace("'", "'\\''");
+				
+				File setupScriptFile = new File(commandHome, "setup-" + positionStr + ".sh");
 				FileUtils.writeLines(setupScriptFile, setupCommands, "\n");
 				
-				File stepScriptFile = new File(commandHome, "step-" + commandPosition + ".sh");
+				File stepScriptFile = new File(commandHome, "step-" + positionStr + ".sh");
 				FileUtils.writeLines(stepScriptFile, stepCommands, "\n");
 				
-				File scriptFile = new File(commandHome, commandPosition + ".sh");
-				String markPrefix = getMarkHome().getAbsolutePath() + "/" + commandPosition;
+				File scriptFile = new File(commandHome, positionStr + ".sh");
+				String markPrefix = getMarkHome().getAbsolutePath() + "/" + positionStr;
 				List<String> wrapperScriptContent = Lists.newArrayList(
-						"while [ ! -f " + markPrefix + ".start ] && [ ! -f " + markPrefix + ".skip ]",
+						"while [ ! -f " + markPrefix + ".start ] && [ ! -f " + markPrefix + ".skip ] && [ ! -f " + markPrefix + ".error ]",
 						"do",
 						"  sleep 0.1",
 						"done",
 						"if [ -f " + markPrefix + ".skip ]",
 						"then",
-						"  echo \"Skipping step #" + commandPosition + "...\"",
+						"  echo 'Skipping step \"" + escapedStepNames + "\"...'",
 						"  echo " + LOG_END_MESSAGE,
 						"  exit 0",
 						"fi",
+						"if [ -f " + markPrefix + ".error ]",
+						"then",
+						"  echo 'Running step \"" + escapedStepNames + "\"...'",
+						"  cat " + markPrefix + ".error",
+						"  touch " + markPrefix + ".failed",
+						"  echo " + LOG_END_MESSAGE,
+						"  exit 1",
+						"fi",
 						"cd " + getWorkspace().getAbsolutePath() 
 								+ " && sh " + setupScriptFile.getAbsolutePath()
-								+ " && echo \"Running step #" + commandPosition + "...\"" 
+								+ " && echo 'Running step \"" + escapedStepNames + "\"...'" 
 								+ " && sh " + stepScriptFile.getAbsolutePath(), 
 						"exitCode=\"$?\"", 
 						"if [ $exitCode -eq 0 ]",
@@ -269,20 +309,20 @@ public class KubernetesHelper {
 		};
 	}
 	
-	public static String encodeCommandArg(Collection<String> decoded) {
+	public static String encodeAsCommandArg(Collection<String> list) {
 		Collection<String> base64 = new ArrayList<>();
-		for (String each: decoded) 
-			base64.add(Base64.getEncoder().encodeToString(each.getBytes(StandardCharsets.UTF_8)));
-		String encoded = StringUtils.join(base64, "-");
-		if (encoded.length() == 0)
-			encoded = "-";
-		return encoded;
+		for (String each: list) 
+			base64.add(Base64.getEncoder().encodeToString(each.getBytes(UTF_8)));
+		String commandArg = StringUtils.join(base64, "-");
+		if (commandArg.length() == 0)
+			commandArg = "-";
+		return commandArg;
 	}
 	
-	public static Collection<String> decodeCommandArg(String encoded) {
-		Collection<String> decoded = new ArrayList<>();
-		for (String each: Splitter.on('-').trimResults().omitEmptyStrings().split(encoded)) 
-			decoded.add(new String(Base64.getDecoder().decode(each), StandardCharsets.UTF_8));
+	public static Collection<String> decodeCommandArgAsCollection(String commandArg) {
+		Collection<String> decoded = new HashSet<>();
+		for (String each: Splitter.on('-').trimResults().omitEmptyStrings().split(commandArg)) 
+			decoded.add(new String(Base64.getDecoder().decode(each), UTF_8));
 		return decoded;
 	}
 	
@@ -325,10 +365,13 @@ public class KubernetesHelper {
 						tempFile.delete();
 				}
 				FileUtils.createDir(getWorkspace());
-				if (isWindows())
-					generateCommandScript("1", Lists.newArrayList(), Lists.newArrayList("@echo off", "echo hello from container"));
-				else
-					generateCommandScript("1", Lists.newArrayList(), Lists.newArrayList("echo hello from container"));
+				if (isWindows()) {
+					generateCommandScript(Lists.newArrayList(0), "test", Lists.newArrayList(), 
+							Lists.newArrayList("@echo off", "echo hello from container"));
+				} else {
+					generateCommandScript(Lists.newArrayList(0), "test", Lists.newArrayList(), 
+							Lists.newArrayList("echo hello from container"));
+				}
 			} else {
 				WebTarget target = client.target(serverUrl).path("rest/k8s/job-context");
 				Invocation.Builder builder =  target.request();
@@ -385,84 +428,17 @@ public class KubernetesHelper {
 				} else {
 					FileUtils.createDir(workspace);
 				}
-				boolean retrieveSource = (boolean) jobContext.get("retrieveSource");
-				if (retrieveSource) {
-					String commitHash = (String) jobContext.get("commitHash");
-					CloneInfo cloneInfo = (CloneInfo) jobContext.get("cloneInfo");
-					
-					logger.info("Retrieving source code from {}...", cloneInfo.getCloneUrl());
-
-					LineConsumer infoLogger = newInfoLogger();
-					LineConsumer errorLogger = newErrorLogger();
-					
-					File userHome;
-					if (SystemUtils.IS_OS_WINDOWS)
-						userHome = new File(System.getProperty("user.home"));
-					else
-						userHome = new File("/root");
-					
-					Commandline git = new Commandline("git").workingDir(workspace);
-					
-					// Populate auth data here in order to clone source in init container
-					cloneInfo.writeAuthData(userHome, git, infoLogger, errorLogger);
-					
-					File mountedUserHome = new File(userHome, "onedev");
-					Commandline gitOfMountedUserHome = new Commandline("git");
-					gitOfMountedUserHome.environments().put("HOME", mountedUserHome.getAbsolutePath());
-					
-					// Populate auth data here in case user want to do additional pull/push in main container 
-					cloneInfo.writeAuthData(mountedUserHome, gitOfMountedUserHome, infoLogger, errorLogger);
-					
-					File trustCertsHome = getTrustCertsHome();
-					if (trustCertsHome.exists()) {
-						List<String> trustCertContent = new ArrayList<>();
-						for (File file: trustCertsHome.listFiles()) {
-							if (file.isFile()) 
-								trustCertContent.addAll(FileUtils.readLines(file, Charset.defaultCharset()));
-						}
-						installGitCert(new File(getBuildHome(), "trust-cert.pem"), trustCertContent, git, 
-								infoLogger, errorLogger);
-					}
-					
-					Integer cloneDepth = (Integer) jobContext.get("cloneDepth");
-					clone(workspace, cloneInfo.getCloneUrl(), commitHash, cloneDepth, git, infoLogger, errorLogger);
-					
-					git.clearArgs();
-					git.addArgs("remote", "add", "origin", cloneInfo.getCloneUrl());
-					git.execute(infoLogger, errorLogger).checkReturnCode();
-					
-					if (new File(workspace, ".gitmodules").exists()) {
-						logger.info("Retrieving submodules...");
-						
-						git.clearArgs();
-						git.addArgs("submodule", "update", "--init", "--recursive", "--force", "--quiet");
-						if (cloneDepth != null)
-							git.addArgs("--depth=" + cloneDepth);						
-						git.execute(infoLogger, new LineConsumer() {
-
-							@Override
-							public void consume(String line) {
-								if (line.contains("Submodule") && line.contains("registered for path")
-										|| line.startsWith("From ") || line.startsWith(" * branch")
-										|| line.startsWith(" +") && line.contains("->")) {
-									infoLogger.consume(line);
-								} else {
-									errorLogger.consume(line);
-								}
-							}
-							
-						}).checkReturnCode();
-					}
-					
-				}	
 				
 				logger.info("Generating command scripts...");
 				
 				List<Action> actions = (List<Action>) jobContext.get("actions");
-				new CompositeExecutable(actions).traverse(new LeafVisitor<Void>() {
+				CompositeExecutable entryExecutable = new CompositeExecutable(actions);
+				entryExecutable.traverse(new LeafVisitor<Void>() {
 
 					@Override
 					public Void visit(LeafExecutable executable, List<Integer> position) {
+						String stepNames = entryExecutable.getNamesAsString(position);
+						
 						List<String> setupCommands = new ArrayList<>();
 						if (isWindows()) {
 							setupCommands.add("@echo off");							
@@ -477,10 +453,12 @@ public class KubernetesHelper {
 								File linkTarget = entry.getKey().getDirectory(cacheHome);
 								// create possible missing parent directories
 								if (isWindows()) {
+									setupCommands.add(String.format("echo Setting up cache \"%s\"...", link));							
 									setupCommands.add(String.format("if not exist \"%s\" mkdir \"%s\"", link, link)); 
 									setupCommands.add(String.format("rmdir /q /s \"%s\"", link));							
 									setupCommands.add(String.format("mklink /D \"%s\" \"%s\"", link, linkTarget.getAbsolutePath()));
 								} else {
+									setupCommands.add(String.format("echo Setting up cache \"%s\"...", link));							
 									setupCommands.add(String.format("mkdir -p \"%s\"", link)); 
 									setupCommands.add(String.format("rm -rf \"%s\"", link));
 									setupCommands.add(String.format("ln -s \"%s\" \"%s\"", linkTarget.getAbsolutePath(), link));
@@ -495,25 +473,34 @@ public class KubernetesHelper {
 						if (executable instanceof CommandExecutable) {
 							commands = ((CommandExecutable) executable).getCommands();
 						} else {
-							ServerExecutable serverExecutable = (ServerExecutable) executable;
-							
+							String command;
 							String classPath;
 							if (SystemUtils.IS_OS_LINUX) 
 								classPath = "/k8s-helper/*";
 							else 
 								classPath = "C:\\k8s-helper\\*";
-							
-							String includeFiles = encodeCommandArg(serverExecutable.getIncludeFiles());
-							String excludeFiles = encodeCommandArg(serverExecutable.getExcludeFiles());
-							String command = String.format("java -classpath \"%s\" io.onedev.k8shelper.RunServerStep %s %s %s", 
-									classPath, positionStr, includeFiles, excludeFiles);
+							if (executable instanceof CheckoutExecutable) {
+								CheckoutExecutable checkoutExecutable = (CheckoutExecutable) executable;
+								checkoutExecutable.getCloneInfo();
+								command = String.format("java -classpath \"%s\" io.onedev.k8shelper.CheckoutCode %s %d %s", 
+										classPath, positionStr, checkoutExecutable.getCloneDepth(), 
+										checkoutExecutable.getCloneInfo().toString());
+							} else {
+								ServerExecutable serverExecutable = (ServerExecutable) executable;
+								
+								String includeFiles = encodeAsCommandArg(serverExecutable.getIncludeFiles());
+								String excludeFiles = encodeAsCommandArg(serverExecutable.getExcludeFiles());
+								String placeholders = encodeAsCommandArg(serverExecutable.getPlaceholders());
+								command = String.format("java -classpath \"%s\" io.onedev.k8shelper.RunServerStep %s %s %s %s", 
+										classPath, positionStr, includeFiles, excludeFiles, placeholders);
+							}							
 							if (SystemUtils.IS_OS_LINUX)
 								commands = Lists.newArrayList(command);
 							else
 								commands = Lists.newArrayList("@echo off", command);
-						}
+						} 
 						
-						generateCommandScript(positionStr, setupCommands, commands);
+						generateCommandScript(position, stepNames, setupCommands, commands);
 						
 						return null;
 					}
@@ -542,11 +529,11 @@ public class KubernetesHelper {
 	}
 	
 	public static String stringifyPosition(List<Integer> position) {
-		return StringUtils.join(position, ".");
+		return StringUtils.join(position, "-");
 	}
 	
 	public static List<Integer> parsePosition(String position) {
-		return Splitter.on('.').splitToList(position)
+		return Splitter.on('-').splitToList(position)
 				.stream()
 				.map(it->Integer.parseInt(it))
 				.collect(Collectors.toList());
@@ -566,8 +553,8 @@ public class KubernetesHelper {
 		} 
 	}
 	
-	public static void clone(File workspace, String cloneUrl, String commitHash, 
-			Integer cloneDepth, Commandline git, LineConsumer infoLogger, LineConsumer errorLogger) {
+	public static void cloneRepository(File workspace, String cloneUrl, String commitHash, 
+			int cloneDepth, Commandline git, LineConsumer infoLogger, LineConsumer errorLogger) {
 		git.clearArgs();
 		if (!new File(workspace, ".git").exists()) {
 			git.addArgs("init", ".");
@@ -584,7 +571,7 @@ public class KubernetesHelper {
 		
 		git.clearArgs();
 		git.addArgs("fetch", cloneUrl, "--force", "--quiet");
-		if (cloneDepth != null)
+		if (cloneDepth != 0)
 			git.addArgs("--depth=" + cloneDepth);
 		git.addArgs(commitHash);
 		git.execute(infoLogger, errorLogger).checkReturnCode();
@@ -610,6 +597,16 @@ public class KubernetesHelper {
 			}).checkReturnCode();
 		}
 	}
+	
+	private static Map<String, Object> readJobContext() {
+		byte[] jobContextBytes;
+		try {
+			jobContextBytes = FileUtils.readFileToByteArray(getJobContextFile());
+		} catch (IOException e) {
+			throw new RuntimeException(e);
+		}
+		return SerializationUtils.deserialize(jobContextBytes);
+	}
 
 	@SuppressWarnings("unchecked")
 	public static void sidecar(String serverUrl, String jobToken, boolean test) {
@@ -619,12 +616,38 @@ public class KubernetesHelper {
 			public boolean execute(LeafExecutable executable, List<Integer> position) {
 				String positionStr = stringifyPosition(position);
 				
-				File file = new File(getMarkHome(), positionStr + ".start");
+				File file;
+				
+				File stepScriptFile;
+				if (SystemUtils.IS_OS_WINDOWS)
+					stepScriptFile = new File(getCommandHome(), "step-" + positionStr + ".bat");
+				else
+					stepScriptFile = new File(getCommandHome(), "step-" + positionStr + ".sh");
+
 				try {
+					String stepScript = FileUtils.readFileToString(stepScriptFile, UTF_8);
+
+					stepScript = replacePlaceholders(stepScript, getBuildHome());
+					
+					FileUtils.writeFile(stepScriptFile, stepScript, UTF_8.name());
+					
+					file = new File(getMarkHome(), positionStr + ".start");
 					if (!file.createNewFile()) 
 						throw new RuntimeException("Failed to create file: " + file.getAbsolutePath());
-				} catch (IOException e) {
-					throw new RuntimeException(e);
+				} catch (Exception e) {
+					file = new File(getMarkHome(), positionStr + ".error");
+
+					ExplicitException explicitException = ExceptionUtils.find(e, ExplicitException.class);
+					String errorMessage;
+					if (explicitException != null)
+						errorMessage = explicitException.getMessage().trim();
+					else 
+						errorMessage = Throwables.getStackTraceAsString(e).trim();
+					errorMessage += "\n";
+					if (SystemUtils.IS_OS_WINDOWS)
+						errorMessage = errorMessage.replace("\n", "\r\n");
+					
+					FileUtils.writeFile(file, errorMessage, UTF_8.name());
 				}
 			
 				File successfulFile = new File(getMarkHome(), positionStr + ".successful");
@@ -657,13 +680,7 @@ public class KubernetesHelper {
 					"this does not matter", Lists.newArrayList("this does not matter"));
 			executable.execute(commandHandler, Lists.newArrayList(1));
 		} else {
-			byte[] jobContextBytes;
-			try {
-				jobContextBytes = FileUtils.readFileToByteArray(getJobContextFile());
-			} catch (IOException e) {
-				throw new RuntimeException(e);
-			}
-			Map<String, Object> jobContext = SerializationUtils.deserialize(jobContextBytes);
+			Map<String, Object> jobContext = readJobContext();
 			
 			List<Action> actions = (List<Action>) jobContext.get("actions");
 			
@@ -692,8 +709,122 @@ public class KubernetesHelper {
 		} 
 	}
 	
+	public static void writeInt(OutputStream os, int value) {
+		try {
+			os.write(ByteBuffer.allocate(4).putInt(value).array());
+		} catch (IOException e) {
+			throw new RuntimeException(e);
+		}
+	}
+
+	public static void writeString(OutputStream os, String value) {
+		try {
+			byte[] valueBytes = value.getBytes(UTF_8);
+			os.write(ByteBuffer.allocate(4).putInt(valueBytes.length).array());
+			os.write(valueBytes);
+		} catch (IOException e) {
+			throw new RuntimeException(e);
+		}
+	}
+	
+	public static String readString(InputStream is) {
+		try {
+			byte[] lengthBytes = new byte[4];
+			if (IOUtils.readFully(is, lengthBytes) != lengthBytes.length)
+				throw new ExplicitException("Invalid input stream");
+			int length = ByteBuffer.wrap(lengthBytes).getInt();
+			byte[] stringBytes = new byte[length];
+			if (IOUtils.readFully(is, stringBytes) != stringBytes.length)
+				throw new ExplicitException("Invalid input stream");
+			return new String(stringBytes, UTF_8);
+		} catch (IOException e) {
+			throw new RuntimeException(e);
+		}
+	}
+	
+	public static int readInt(InputStream is) {
+		try {
+			byte[] intBytes = new byte[4];
+			if (IOUtils.readFully(is, intBytes) != intBytes.length)
+				throw new ExplicitException("Invalid input stream");
+			return ByteBuffer.wrap(intBytes).getInt();
+		} catch (IOException e) {
+			throw new RuntimeException(e);
+		}
+	}
+	
+	public static void checkoutCode(String serverUrl, String jobToken, String positionStr, 
+			int cloneDepth, CloneInfo cloneInfo) throws IOException {
+		Map<String, Object> jobContext = readJobContext();
+		String commitHash = (String) jobContext.get("commitHash");
+		
+		logger.info("Checking out code from {}...", cloneInfo.getCloneUrl());
+
+		LineConsumer infoLogger = newInfoLogger();
+		LineConsumer errorLogger = newErrorLogger();
+		
+		File userHome;
+		if (SystemUtils.IS_OS_WINDOWS)
+			userHome = new File(System.getProperty("user.home"));
+		else
+			userHome = new File("/root");
+		
+		File workspace = getWorkspace();
+		Commandline git = new Commandline("git").workingDir(workspace);
+		
+		cloneInfo.writeAuthData(userHome, git, infoLogger, errorLogger);
+		
+		File mountedUserHome = new File(userHome, "onedev");
+		Commandline gitOfMountedUserHome = new Commandline("git");
+		gitOfMountedUserHome.environments().put("HOME", mountedUserHome.getAbsolutePath());
+		
+		// Populate auth data here in case user want to do additional pull/push in other step container 
+		cloneInfo.writeAuthData(mountedUserHome, gitOfMountedUserHome, infoLogger, errorLogger);
+		
+		File trustCertsHome = getTrustCertsHome();
+		if (trustCertsHome.exists()) {
+			List<String> trustCertContent = new ArrayList<>();
+			for (File file: trustCertsHome.listFiles()) {
+				if (file.isFile()) 
+					trustCertContent.addAll(FileUtils.readLines(file, Charset.defaultCharset()));
+			}
+			installGitCert(new File(getBuildHome(), "trust-cert.pem"), trustCertContent, git, 
+					infoLogger, errorLogger);
+		}
+		
+		cloneRepository(workspace, cloneInfo.getCloneUrl(), commitHash, cloneDepth, git, infoLogger, errorLogger);
+		
+		git.clearArgs();
+		git.addArgs("remote", "add", "origin", cloneInfo.getCloneUrl());
+		git.execute(infoLogger, errorLogger).checkReturnCode();
+		
+		if (new File(workspace, ".gitmodules").exists()) {
+			logger.info("Retrieving submodules...");
+			
+			git.clearArgs();
+			git.addArgs("submodule", "update", "--init", "--recursive", "--force", "--quiet");
+			if (cloneDepth != 0)
+				git.addArgs("--depth=" + cloneDepth);						
+			git.execute(infoLogger, new LineConsumer() {
+
+				@Override
+				public void consume(String line) {
+					if (line.contains("Submodule") && line.contains("registered for path")
+							|| line.startsWith("From ") || line.startsWith(" * branch")
+							|| line.startsWith(" +") && line.contains("->")) {
+						infoLogger.consume(line);
+					} else {
+						errorLogger.consume(line);
+					}
+				}
+				
+			}).checkReturnCode();
+		}
+		
+	}
+	
 	public static void runServerStep(String serverUrl, String jobToken, String positionStr, 
-			String encodedIncludeFiles, String encodedExcludeFiles) {
+			String encodedIncludeFiles, String encodedExcludeFiles, String encodedPlaceholders) {
 		installJVMCert();
 		
 		Client client = ClientBuilder.newClient();
@@ -704,32 +835,118 @@ public class KubernetesHelper {
 			builder.header(HttpHeaders.AUTHORIZATION, BEARER + " " + jobToken);
 
 			List<Integer> position = parsePosition(positionStr);
-			Collection<String> includeFiles = decodeCommandArg(encodedIncludeFiles);
-			Collection<String> excludeFiles = decodeCommandArg(encodedExcludeFiles);
+			Collection<String> includeFiles = decodeCommandArgAsCollection(encodedIncludeFiles);
+			Collection<String> excludeFiles = decodeCommandArgAsCollection(encodedExcludeFiles);
+			Collection<String> placeholders = decodeCommandArgAsCollection(encodedPlaceholders);
 			
+			Map<String, String> placeholderValues = readPlaceholderValues(getBuildHome(), placeholders);
+
 			StreamingOutput os = new StreamingOutput() {
 
 				@Override
 			   public void write(OutputStream os) throws IOException {
-					os.write(ByteBuffer.allocate(4).putInt(position.size()).array());
-					for (int each: position) {
-						os.write(ByteBuffer.allocate(4).putInt(each).array());
+					writeInt(os, position.size());
+					for (int each: position) 
+						writeInt(os, each);
+					
+					writeInt(os, placeholderValues.size());
+					for (Map.Entry<String, String> entry: placeholderValues.entrySet()) {
+						writeString(os, entry.getKey());
+						writeString(os, entry.getValue());
 					}
-					TarUtils.tar(getWorkspace(), includeFiles, excludeFiles, os);
+					
+					TarUtils.tar(
+							getWorkspace(), 
+							replacePlaceholders(includeFiles, placeholderValues), 
+							replacePlaceholders(excludeFiles, placeholderValues), 
+							os);
 			   }				   
 			   
 			};
 			
 			try (Response response = builder.post(Entity.entity(os, MediaType.APPLICATION_OCTET_STREAM))) {
 				checkStatus(response);
-				byte[] logBytes = response.readEntity(byte[].class);
-				List<String> logMessages = SerializationUtils.deserialize(logBytes);
-				for (String logMessage: logMessages)
+				ServerExecutionResult result = SerializationUtils.deserialize(response.readEntity(byte[].class));
+				for (String logMessage: result.getLogMessages())
 					logger.info(logMessage);
+				if (result.getOutputFiles() != null) {
+					for (Map.Entry<String, byte[]> entry: result.getOutputFiles().entrySet()) {
+						try {
+							FileUtils.writeByteArrayToFile(
+									new File(getBuildHome(), entry.getKey()), 
+									entry.getValue());
+						} catch (IOException e) {
+							throw new RuntimeException(e);
+						}
+					}
+				}
 			}
 		} finally {
 			client.close();
 		}
 	}
-		
+	
+	public static Collection<String> parsePlaceholders(String string) {
+		Collection<String> placeholderFiles = new HashSet<>();
+		Matcher matcher = PLACEHOLDER_PATTERN.matcher(string);  
+        while (matcher.find())   
+        	placeholderFiles.add(matcher.group(1));
+		return placeholderFiles;
+	}
+
+	public static Map<String, String> readPlaceholderValues(File dir, Collection<String> placeholders) {
+		Map<String, String> placeholderValues = new HashMap<>();
+		for (String placeholder: placeholders) {
+			File file = new File(dir, placeholder);
+			if (file.exists()) {
+				try {
+					placeholderValues.put(placeholder, FileUtils.readFileToString(file, UTF_8).trim());
+				} catch (IOException e) {
+					throw new RuntimeException(e);
+				}
+			}
+		}
+		return placeholderValues;
+	}
+	
+	public static String replacePlaceholders(String string, Map<String, String> placeholderValues) {
+		Matcher matcher = PLACEHOLDER_PATTERN.matcher(string);  
+        StringBuffer buffer = new StringBuffer();  
+        while (matcher.find()) {  
+        	String placeholder = matcher.group(1);
+        	String placeholderValue = placeholderValues.get(placeholder);
+        	if (placeholderValue != null) {
+        		matcher.appendReplacement(buffer, placeholderValue);
+        	} else if (placeholder.startsWith(WORKSPACE + "/")) {
+        		throw new ExplicitException("Error replacing placeholder: unable to find file '" 
+        				+ placeholder.substring(WORKSPACE.length()+1) + "' in workspace");
+        	} else if (placeholder.equals(BUILD_VERSION)){ 
+        		throw new ExplicitException("Error replacing placeholder: build version not set yet");
+        	}
+         }  
+         matcher.appendTail(buffer);  
+         return buffer.toString();
+	}
+	
+	public static String replacePlaceholders(String string, File buildHome) {
+		Collection<String> placeholders = parsePlaceholders(string);
+		Map<String, String> placeholderValues = readPlaceholderValues(buildHome, placeholders);
+		return replacePlaceholders(string, placeholderValues);
+	}
+	
+	public static Collection<String> replacePlaceholders(Collection<String> collection, 
+			Map<String, String> placeholderValues) {
+		Collection<String> replacedCollection = new ArrayList<>();
+		for (String each: collection) 
+			replacedCollection.add(replacePlaceholders(each, placeholderValues));
+		return replacedCollection;
+	}
+	
+	public static Collection<String> replacePlaceholders(Collection<String> collection, File buildHome) {
+		Collection<String> replacedCollection = new ArrayList<>();
+		for (String each: collection)
+			replacedCollection.add(replacePlaceholders(each, buildHome));
+		return replacedCollection;
+	}
+	
 }

@@ -1,6 +1,8 @@
 package io.onedev.k8shelper;
 
 import java.io.File;
+import java.nio.charset.StandardCharsets;
+import java.util.Base64;
 
 import javax.ws.rs.core.HttpHeaders;
 
@@ -27,4 +29,11 @@ public class HttpCloneInfo extends CloneInfo {
 		git.execute(infoLogger, errorLogger).checkReturnCode();
 	}
 
+	@Override
+	public String toString() {
+		return "http-" 
+				+ Base64.getEncoder().encodeToString(getCloneUrl().getBytes(StandardCharsets.UTF_8)) 
+				+ "-" + Base64.getEncoder().encodeToString(accessToken.getBytes(StandardCharsets.UTF_8));
+	}
+	
 }

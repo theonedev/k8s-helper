@@ -1,5 +1,6 @@
 package io.onedev.k8shelper;
 
+import java.util.Collection;
 import java.util.Set;
 
 public class ServerExecutable extends LeafExecutable {
@@ -12,10 +13,13 @@ public class ServerExecutable extends LeafExecutable {
 	
 	private final Set<String> excludeFiles;
 	
-	public ServerExecutable(Object step, Set<String> includeFiles, Set<String> excludeFiles) {
+	private final Collection<String> placeholders;
+	
+	public ServerExecutable(Object step, Set<String> includeFiles, Set<String> excludeFiles, Collection<String> placeholders) {
 		this.step = step;
 		this.includeFiles = includeFiles;
 		this.excludeFiles = excludeFiles;
+		this.placeholders = placeholders;
 	}
 
 	public Object getStep() {
@@ -28,6 +32,10 @@ public class ServerExecutable extends LeafExecutable {
 
 	public Set<String> getExcludeFiles() {
 		return excludeFiles;
+	}
+
+	public Collection<String> getPlaceholders() {
+		return placeholders;
 	}
 
 }

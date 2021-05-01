@@ -1,6 +1,8 @@
 package io.onedev.k8shelper;
 
 import java.io.File;
+import java.nio.charset.StandardCharsets;
+import java.util.Base64;
 
 import org.apache.commons.lang3.SystemUtils;
 
@@ -36,4 +38,12 @@ public class SshCloneInfo extends CloneInfo {
 		FileUtils.writeFile(new File(sshDir, "known_hosts"), knownHosts);
 	}
 
+	@Override
+	public String toString() {
+		return "ssh-" 
+				+ Base64.getEncoder().encodeToString(getCloneUrl().getBytes(StandardCharsets.UTF_8)) 
+				+ "-" + Base64.getEncoder().encodeToString(privateKey.getBytes(StandardCharsets.UTF_8))
+				+ "-" + Base64.getEncoder().encodeToString(knownHosts.getBytes(StandardCharsets.UTF_8));
+	}
+	
 }

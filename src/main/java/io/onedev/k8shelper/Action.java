@@ -6,13 +6,20 @@ public class Action implements Serializable {
 
 	private static final long serialVersionUID = 1L;
 
+	private final String name;
+	
 	private final ExecuteCondition condition;
 	
 	private final Executable executable;
 	
-	public Action(Executable executable, ExecuteCondition condition) {
+	public Action(String name, Executable executable, ExecuteCondition condition) {
+		this.name = name;
 		this.executable = executable;
 		this.condition = condition;
+	}
+
+	public String getName() {
+		return name;
 	}
 
 	public Executable getExecutable() {
