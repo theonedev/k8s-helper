@@ -29,8 +29,8 @@ jobs:
     - ''
     - mvn deploy -Dmaven.deploy.password=@secrets:maven-deploy-password@
     - ''
-    - docker build -t 1dev/k8s-helper-linux:$buildVersion -f Dockerfile.linux .
-    - docker push 1dev/k8s-helper-linux:$buildVersion
+    - docker build -t 1dev/k8s-helper-linux:@build_version@ -f Dockerfile.linux .
+    - docker push 1dev/k8s-helper-linux:@build_version@
     condition: ALL_PREVIOUS_STEPS_WERE_SUCCESSFUL
   - !CreateTagStep
     name: 'create tag '
