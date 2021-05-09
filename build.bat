@@ -5,7 +5,9 @@ rm version.txt
 
 cmd /c mvn clean package || exit /b 1
 
-for %%i in (1607,1709,1803,1809,1903,1909) do (
-  docker build -t 1dev/k8s-helper-windows-%%i:%buildVersion% -f Dockerfile.windows --build-arg osVersion=%%i . || exit /b 1
-  docker push 1dev/k8s-helper-windows-%%i:%buildVersion% || exit /b 1
+for %%i in (1607,1709,1803,1809,1903,1909,2004,20H2) do (
+  for /f %%j in ('make-lowercase %%i') do (
+    docker build -t 1dev/k8s-helper-windows-%%j:%buildVersion% -f Dockerfile.windows --build-arg osVersion=%%i . || exit /b 1
+    docker push 1dev/k8s-helper-windows-%%j:%buildVersion% || exit /b 1
+  )  
 )
