@@ -349,7 +349,7 @@ public class KubernetesHelper {
 			FileUtils.createDir(getMarkHome());
 			if (test) {
 				logger.info("Testing server connectivity with '{}'...", serverUrl);
-				WebTarget target = client.target(serverUrl).path("rest/k8s/test");
+				WebTarget target = client.target(serverUrl).path("api/k8s/test");
 				Invocation.Builder builder =  target.request();
 				builder.header(HttpHeaders.AUTHORIZATION, BEARER + " " + jobToken);
 				try (Response response = builder.get()) {
@@ -373,7 +373,7 @@ public class KubernetesHelper {
 							Lists.newArrayList("echo hello from container"));
 				}
 			} else {
-				WebTarget target = client.target(serverUrl).path("rest/k8s/job-context");
+				WebTarget target = client.target(serverUrl).path("api/k8s/job-context");
 				Invocation.Builder builder =  target.request();
 				builder.header(HttpHeaders.AUTHORIZATION, BEARER + " " + jobToken);
 				
@@ -394,7 +394,7 @@ public class KubernetesHelper {
 				File workspaceCache = null;
 				
 				logger.info("Allocating job caches from {}...", serverUrl);
-				target = client.target(serverUrl).path("rest/k8s/allocate-job-caches");
+				target = client.target(serverUrl).path("api/k8s/allocate-job-caches");
 				builder =  target.request();
 				builder.header(HttpHeaders.AUTHORIZATION, BEARER + " " + jobToken);
 				Map<CacheInstance, String> cacheAllocations;
@@ -509,7 +509,7 @@ public class KubernetesHelper {
 				
 				logger.info("Downloading job dependencies from {}...", serverUrl);
 				
-				target = client.target(serverUrl).path("rest/k8s/download-dependencies");
+				target = client.target(serverUrl).path("api/k8s/download-dependencies");
 				builder =  target.request();
 				builder.header(HttpHeaders.AUTHORIZATION, BEARER + " " + jobToken);
 				
@@ -691,7 +691,7 @@ public class KubernetesHelper {
 			Client client = ClientBuilder.newClient();
 			try {
 				logger.info("Reporting job caches to '{}'...", serverUrl);
-				WebTarget target = client.target(serverUrl).path("rest/k8s/report-job-caches");
+				WebTarget target = client.target(serverUrl).path("api/k8s/report-job-caches");
 				Invocation.Builder builder = target.request();
 				builder.header(HttpHeaders.AUTHORIZATION, BEARER + " " + jobToken);
 				StringBuilder toStringBuilder = new StringBuilder();
@@ -830,7 +830,7 @@ public class KubernetesHelper {
 		Client client = ClientBuilder.newClient();
 		client.property(ClientProperties.REQUEST_ENTITY_PROCESSING, "CHUNKED");
 		try {
-			WebTarget target = client.target(serverUrl).path("rest/k8s/run-server-step");
+			WebTarget target = client.target(serverUrl).path("api/k8s/run-server-step");
 			Invocation.Builder builder =  target.request();
 			builder.header(HttpHeaders.AUTHORIZATION, BEARER + " " + jobToken);
 
