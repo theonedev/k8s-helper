@@ -866,11 +866,14 @@ public class KubernetesHelper {
 			
 			try (Response response = builder.post(Entity.entity(os, MediaType.APPLICATION_OCTET_STREAM))) {
 				checkStatus(response);
-				ServerExecutionResult result = SerializationUtils.deserialize(response.readEntity(byte[].class));
-				for (String logMessage: result.getLogMessages())
-					logger.info(logMessage);
-				if (result.getOutputFiles() != null) {
-					for (Map.Entry<String, byte[]> entry: result.getOutputFiles().entrySet()) {
+				try (InputStream is = response.readEntity(InputStream.class)) {
+					while (readInt(is) == 1) {
+						logger.info(readString(is));
+					}
+					byte[] bytes = new byte[readInt(is)];
+					IOUtils.readFully(is, bytes);
+					Map<String, byte[]> files = SerializationUtils.deserialize(bytes);
+					for (Map.Entry<String, byte[]> entry: files.entrySet()) {
 						try {
 							FileUtils.writeByteArrayToFile(
 									new File(getBuildHome(), entry.getKey()), 
@@ -879,7 +882,9 @@ public class KubernetesHelper {
 							throw new RuntimeException(e);
 						}
 					}
-				}
+				} catch (IOException e) {
+					throw new RuntimeException(e);
+				} 
 			}
 		} finally {
 			client.close();
