@@ -15,6 +15,8 @@ public abstract class CloneInfo implements Serializable {
 	
 	private static final long serialVersionUID = 1L;
 	
+	public static final String ONEDEV_AUTHORIZATION = "OneDev-Authorization";
+	
 	private final String cloneUrl;
 	
 	public CloneInfo(String cloneUrl) {

@@ -22,7 +22,7 @@ public class Init {
 			logger.info(KubernetesHelper.LOG_END_MESSAGE);
 			System.exit(0);
 		} catch (Exception e) {
-			logger.error("Error executing init logic", e);
+			logger.error(KubernetesHelper.wrapWithAnsiError("Error executing init logic"), e);
 			logger.info(KubernetesHelper.LOG_END_MESSAGE);
 			System.exit(1);
 		}

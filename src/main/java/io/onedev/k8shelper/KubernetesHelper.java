@@ -1,5 +1,7 @@
 package io.onedev.k8shelper;
 
+import static java.nio.charset.StandardCharsets.UTF_8;
+
 import java.io.File;
 import java.io.FileFilter;
 import java.io.IOException;
@@ -7,7 +9,6 @@ import java.io.InputStream;
 import java.io.OutputStream;
 import java.nio.ByteBuffer;
 import java.nio.charset.Charset;
-import static java.nio.charset.StandardCharsets.UTF_8;
 import java.nio.file.Files;
 import java.util.ArrayList;
 import java.util.Base64;
@@ -278,7 +279,7 @@ public class KubernetesHelper {
 						@Override
 						public void consume(String line) {
 							if (!line.contains("Warning: use -cacerts option to access cacerts keystore"))
-								logger.error(line);
+								logger.error(wrapWithAnsiError(line));
 						}
 						
 					}).checkReturnCode();
@@ -303,7 +304,7 @@ public class KubernetesHelper {
 
 			@Override
 			public void consume(String line) {
-				logger.error(line);
+				logger.error(wrapWithAnsiError(line));
 			}
 			
 		};
@@ -952,6 +953,18 @@ public class KubernetesHelper {
 		for (String each: collection)
 			replacedCollection.add(replacePlaceholders(each, buildHome));
 		return replacedCollection;
+	}
+	
+	public static String wrapWithAnsiError(String text) {
+		return "\033[1;31m" + text + "\033[0m";
+	}
+	
+	public static String wrapWithAnsiWarning(String text) {
+		return "\033[1;33m" + text + "\033[0m";
+	}
+	
+	public static String wrapWithAnsiEmphasize(String text) {
+		return "\033[1;35m" + text + "\033[0m";
 	}
 	
 }
