@@ -10,9 +10,12 @@ public class CommandExecutable extends LeafExecutable {
 	
 	private final List<String> commands;
 	
-	public CommandExecutable(String image, List<String> commands) {
+	private final boolean useTTY;
+	
+	public CommandExecutable(String image, List<String> commands, boolean useTTY) {
 		this.image = image;
 		this.commands = commands;
+		this.useTTY = useTTY;
 	}
 
 	public String getImage() {
@@ -21,6 +24,10 @@ public class CommandExecutable extends LeafExecutable {
 
 	public List<String> getCommands() {
 		return commands;
+	}
+
+	public boolean isUseTTY() {
+		return useTTY;
 	}
 
 }

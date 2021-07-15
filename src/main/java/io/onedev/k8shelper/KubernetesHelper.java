@@ -678,7 +678,7 @@ public class KubernetesHelper {
 		
 		if (test) {
 			CommandExecutable executable = new CommandExecutable(
-					"this does not matter", Lists.newArrayList("this does not matter"));
+					"this does not matter", Lists.newArrayList("this does not matter"), false);
 			executable.execute(commandHandler, Lists.newArrayList(1));
 		} else {
 			Map<String, Object> jobContext = readJobContext();
