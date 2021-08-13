@@ -50,7 +50,6 @@ import io.onedev.commons.utils.ExceptionUtils;
 import io.onedev.commons.utils.ExplicitException;
 import io.onedev.commons.utils.FileUtils;
 import io.onedev.commons.utils.PathUtils;
-import io.onedev.commons.utils.TarUtils;
 import io.onedev.commons.utils.command.Commandline;
 import io.onedev.commons.utils.command.LineConsumer;
 
@@ -517,7 +516,7 @@ public class KubernetesHelper {
 				try (Response response = builder.get()){
 					checkStatus(response);
 					try (InputStream is = response.readEntity(InputStream.class)) {
-						TarUtils.untar(is, workspace);
+						FileUtils.untar(is, workspace, false);
 					} 
 				}
 				logger.info("Job workspace initialized");
@@ -856,11 +855,11 @@ public class KubernetesHelper {
 						writeString(os, entry.getValue());
 					}
 					
-					TarUtils.tar(
+					FileUtils.tar(
 							getWorkspace(), 
 							replacePlaceholders(includeFiles, placeholderValues), 
 							replacePlaceholders(excludeFiles, placeholderValues), 
-							os);
+							os, false);
 			   }				   
 			   
 			};
