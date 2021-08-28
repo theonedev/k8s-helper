@@ -5,6 +5,8 @@ import org.slf4j.LoggerFactory;
 
 import com.google.common.base.Preconditions;
 
+import io.onedev.commons.utils.TaskLogger;
+
 public class Init {
 
 	private static final Logger logger = LoggerFactory.getLogger(Init.class);
@@ -22,7 +24,7 @@ public class Init {
 			logger.info(KubernetesHelper.LOG_END_MESSAGE);
 			System.exit(0);
 		} catch (Exception e) {
-			logger.error(KubernetesHelper.wrapWithAnsiError("Error executing init logic"), e);
+			logger.error(TaskLogger.wrapWithAnsiError("Error executing init logic"), e);
 			logger.info(KubernetesHelper.LOG_END_MESSAGE);
 			System.exit(1);
 		}

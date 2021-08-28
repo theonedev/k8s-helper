@@ -5,6 +5,8 @@ import org.slf4j.LoggerFactory;
 
 import com.google.common.base.Preconditions;
 
+import io.onedev.commons.utils.TaskLogger;
+
 public class SideCar {
 
 	private static final Logger logger = LoggerFactory.getLogger(SideCar.class);
@@ -23,7 +25,7 @@ public class SideCar {
 			logger.info(KubernetesHelper.LOG_END_MESSAGE);
 			System.exit(0);
 		} catch (Exception e) {
-			logger.error(KubernetesHelper.wrapWithAnsiError("Error executing sidecar logic"), e);
+			logger.error(TaskLogger.wrapWithAnsiError("Error executing sidecar logic"), e);
 			logger.info(KubernetesHelper.LOG_END_MESSAGE);
 			System.exit(1);
 		}

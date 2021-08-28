@@ -5,6 +5,8 @@ import org.slf4j.LoggerFactory;
 
 import com.google.common.base.Preconditions;
 
+import io.onedev.commons.utils.TaskLogger;
+
 public class RunServerStep {
 
 	private static final Logger logger = LoggerFactory.getLogger(RunServerStep.class);
@@ -21,7 +23,7 @@ public class RunServerStep {
 
 			KubernetesHelper.runServerStep(serverUrl, jobToken, args[0], args[1], args[2], args[3]);
 		} catch (Exception e) {
-			logger.error(KubernetesHelper.wrapWithAnsiError("Error executing step"), e);
+			logger.error(TaskLogger.wrapWithAnsiError("Error executing step"), e);
 			exitCode = 1;
 		} finally {
 			logger.info(KubernetesHelper.LOG_END_MESSAGE);
