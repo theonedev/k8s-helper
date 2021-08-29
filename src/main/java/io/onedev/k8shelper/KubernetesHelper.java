@@ -599,7 +599,7 @@ public class KubernetesHelper {
 	public static void updateSubmodulesIfNecessary(Commandline git, int cloneDepth,
 			LineConsumer infoLogger, LineConsumer errorLogger) {
 		if (new File(git.workingDir(), ".gitmodules").exists()) {
-			logger.info("Retrieving submodules...");
+			infoLogger.consume("Retrieving submodules...");
 			
 			git.clearArgs();
 			git.addArgs("submodule", "update", "--init", "--recursive", "--force", "--quiet");
