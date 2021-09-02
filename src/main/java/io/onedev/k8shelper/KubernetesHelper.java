@@ -76,6 +76,8 @@ public class KubernetesHelper {
 	
 	private static final Logger logger = LoggerFactory.getLogger(KubernetesHelper.class);
 	
+	private static final Object cacheHomeCreationLock = new Object();
+	
 	private static File getBuildHome() {
 		if (isWindows()) 
 			return new File("C:\\onedev-build");
@@ -95,10 +97,15 @@ public class KubernetesHelper {
 	}
 	
 	private static File getCacheHome() {
+		File file;
 		if (isWindows())
-			return new File("C:\\onedev-build\\cache");
+			file = new File("C:\\onedev-build\\cache");
 		else
-			return new File("/onedev-build/cache");
+			file = new File("/onedev-build/cache");
+		if (!file.exists()) synchronized (cacheHomeCreationLock) {
+			FileUtils.createDir(file);
+		}
+		return file;
 	}
 	
 	private static File getWorkspace() {
@@ -348,7 +355,7 @@ public class KubernetesHelper {
 			FileUtils.createDir(getCommandHome());
 			FileUtils.createDir(getMarkHome());
 			if (test) {
-				logger.info("Testing server connectivity with '{}'...", serverUrl);
+				logger.info("Connecting to server '{}'...", serverUrl);
 				WebTarget target = client.target(serverUrl).path("api/k8s/test");
 				Invocation.Builder builder =  target.request();
 				builder.header(HttpHeaders.AUTHORIZATION, BEARER + " " + jobToken);
@@ -565,7 +572,15 @@ public class KubernetesHelper {
 						infoLogger.consume(line);
 				}
 				
-			}, errorLogger).checkReturnCode();
+			}, new LineConsumer() {
+
+				@Override
+				public void consume(String line) {
+					if (!line.startsWith("hint:"))
+						errorLogger.consume(line);
+				}
+				
+			}).checkReturnCode();
 		}								
 	}
 	
@@ -856,7 +871,7 @@ public class KubernetesHelper {
 		TaskLogger logger = new TaskLogger() {
 
 			@Override
-			public void log(String message, String taskId) {
+			public void log(String message, String sessionId) {
 				KubernetesHelper.logger.info(message);
 			}
 			
