@@ -731,7 +731,7 @@ public class KubernetesHelper {
 		if (test) {
 			CommandExecutable executable = new CommandExecutable(
 					"this does not matter", Lists.newArrayList("this does not matter"), false);
-			executable.execute(commandHandler, Lists.newArrayList(1));
+			executable.execute(commandHandler, Lists.newArrayList(0));
 		} else {
 			JobData jobData = readJobData();
 			
