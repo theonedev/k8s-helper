@@ -68,6 +68,8 @@ public class KubernetesHelper {
 	
 	public static final String WORKSPACE = "workspace";
 	
+	public static final String ATTRIBUTES = "attributes";
+	
 	public static final String PLACEHOLDER_PREFIX = "<&onedev#";
 	
 	public static final String PLACEHOLDER_SUFFIX = "#onedev&>";
@@ -976,6 +978,9 @@ public class KubernetesHelper {
         	} else if (placeholder.startsWith(WORKSPACE + "/")) {
         		throw new ExplicitException("Error replacing placeholder: unable to find file '" 
         				+ placeholder.substring(WORKSPACE.length()+1) + "' in workspace");
+        	} else if (placeholder.startsWith(ATTRIBUTES + "/")) {
+        		throw new ExplicitException("Error replacing placeholder: agent attribute '" 
+        				+ placeholder.substring(ATTRIBUTES.length()+1) + "' does not exist");
         	} else if (placeholder.equals(BUILD_VERSION)){ 
         		throw new ExplicitException("Error replacing placeholder: build version not set yet");
         	}
