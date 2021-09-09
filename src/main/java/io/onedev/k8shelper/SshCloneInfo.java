@@ -29,13 +29,20 @@ public class SshCloneInfo extends CloneInfo {
 	public void writeAuthData(File homeDir, Commandline git, LineConsumer infoLogger, LineConsumer errorLogger) {
 		File sshDir = new File(homeDir, ".ssh");
 		FileUtils.createDir(sshDir);
-		FileUtils.writeFile(new File(sshDir, "id_rsa"), privateKey);
+		
+		File privateKeyFile = new File(sshDir, "id_rsa");
+		FileUtils.writeFile(privateKeyFile, privateKey);
+		File knownHostsFile = new File(sshDir, "known_hosts");
+		FileUtils.writeFile(knownHostsFile, knownHosts);
 		if (!SystemUtils.IS_OS_WINDOWS) {
 			Commandline chmod = new Commandline("chmod");
 			chmod.workingDir(sshDir).addArgs("400", "id_rsa");
 			chmod.execute(infoLogger, errorLogger).checkReturnCode();
+			
+			git.clearArgs();
+			git.addArgs("config", "--global", "core.sshCommand", "ssh -i \"" + privateKeyFile.getAbsolutePath() + "\" -o UserKnownHostsFile=\"" + knownHostsFile.getAbsolutePath() + "\" -F /dev/null");
+			git.execute(infoLogger, errorLogger).checkReturnCode();
 		}
-		FileUtils.writeFile(new File(sshDir, "known_hosts"), knownHosts);
 	}
 
 	@Override
