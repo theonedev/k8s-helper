@@ -68,6 +68,8 @@ public class KubernetesHelper {
 	
 	public static final String WORKSPACE = "workspace";
 	
+	public static final String HOME_PREFIX = "home:";
+	
 	public static final String ATTRIBUTES = "attributes";
 	
 	public static final String PLACEHOLDER_PREFIX = "<&onedev#";
@@ -147,7 +149,7 @@ public class KubernetesHelper {
 		return instances;
 	}
 	
-	public static void preprocess(File cacheHome, Map<CacheInstance, String> cacheAllocations, Consumer<File> cacheCleaner) {
+	public static void checkCacheAllocations(File cacheHome, Map<CacheInstance, String> cacheAllocations, Consumer<File> cacheCleaner) {
 		for (Iterator<Map.Entry<CacheInstance, String>> it = cacheAllocations.entrySet().iterator(); it.hasNext();) {
 			Map.Entry<CacheInstance, String> entry = it.next();
 			File cacheDirectory = entry.getKey().getDirectory(cacheHome);
@@ -414,7 +416,7 @@ public class KubernetesHelper {
 					cacheAllocations = SerializationUtils.deserialize(response.readEntity(byte[].class));
 				}
 				
-				preprocess(cacheHome, cacheAllocations, new Consumer<File>() {
+				checkCacheAllocations(cacheHome, cacheAllocations, new Consumer<File>() {
 
 					@Override
 					public void accept(File dir) {
@@ -457,19 +459,20 @@ public class KubernetesHelper {
 						
 						for (Map.Entry<CacheInstance, String> entry: cacheAllocations.entrySet()) {
 							if (!PathUtils.isCurrent(entry.getValue())) {
-								String link = PathUtils.resolve(workspace.getAbsolutePath(), entry.getValue());
-								File linkTarget = entry.getKey().getDirectory(cacheHome);
-								// create possible missing parent directories
-								if (isWindows()) {
-									setupCommands.add(String.format("echo Setting up cache \"%s\"...", link));							
-									setupCommands.add(String.format("if not exist \"%s\" mkdir \"%s\"", link, link)); 
-									setupCommands.add(String.format("rmdir /q /s \"%s\"", link));							
-									setupCommands.add(String.format("mklink /D \"%s\" \"%s\"", link, linkTarget.getAbsolutePath()));
-								} else {
-									setupCommands.add(String.format("echo Setting up cache \"%s\"...", link));							
-									setupCommands.add(String.format("mkdir -p \"%s\"", link)); 
-									setupCommands.add(String.format("rm -rf \"%s\"", link));
-									setupCommands.add(String.format("ln -s \"%s\" \"%s\"", linkTarget.getAbsolutePath(), link));
+								for (String link: resolveCachePath(workspace.getAbsolutePath(), entry.getValue())) {
+									File linkTarget = entry.getKey().getDirectory(cacheHome);
+									// create possible missing parent directories
+									if (isWindows()) {
+										setupCommands.add(String.format("echo Setting up cache \"%s\"...", link));							
+										setupCommands.add(String.format("if not exist \"%s\" mkdir \"%s\"", link, link)); 
+										setupCommands.add(String.format("rmdir /q /s \"%s\"", link));							
+										setupCommands.add(String.format("mklink /D \"%s\" \"%s\"", link, linkTarget.getAbsolutePath()));
+									} else {
+										setupCommands.add(String.format("echo Setting up cache \"%s\"...", link));							
+										setupCommands.add(String.format("mkdir -p \"%s\"", link)); 
+										setupCommands.add(String.format("rm -rf \"%s\"", link));
+										setupCommands.add(String.format("ln -s \"%s\" \"%s\"", linkTarget.getAbsolutePath(), link));
+									}
 								}
 							}
 						}
@@ -561,8 +564,15 @@ public class KubernetesHelper {
 		} 
 	}
 
-	public static void initRepositoryIfNecessary(Commandline git, LineConsumer infoLogger, 
-			LineConsumer errorLogger) {
+	public static void checkoutRepository(Commandline git, String commitHash, 
+			LineConsumer infoLogger, LineConsumer errorLogger) {
+		git.clearArgs();
+		git.addArgs("checkout", "--quiet", commitHash);
+		git.execute(infoLogger, errorLogger).checkReturnCode();
+	}
+	
+	public static void cloneRepository(Commandline git, String cloneUrl, String remoteUrl, 
+			String commitHash, int cloneDepth, LineConsumer infoLogger, LineConsumer errorLogger) {
 		git.clearArgs();
 		if (!new File(git.workingDir(), ".git").exists()) {
 			git.addArgs("init", ".");
@@ -584,17 +594,20 @@ public class KubernetesHelper {
 				
 			}).checkReturnCode();
 		}								
-	}
-	
-	public static void checkoutRepository(Commandline git, String commitHash, 
-			LineConsumer infoLogger, LineConsumer errorLogger) {
+		
 		git.clearArgs();
-		git.addArgs("checkout", "--quiet", commitHash);
+		git.addArgs("fetch", cloneUrl, "--force", "--quiet");
+		if (cloneDepth != 0)
+			git.addArgs("--depth=" + cloneDepth);
+		git.addArgs(commitHash);
 		git.execute(infoLogger, errorLogger).checkReturnCode();
-	}
-	
-	public static void deinitSubmodulesIfNecessary(Commandline git, 
-			LineConsumer infoLogger, LineConsumer errorLogger) {
+
+		checkoutRepository(git, commitHash, infoLogger, errorLogger);
+		
+		git.clearArgs();
+		git.addArgs("remote", "add", "origin", remoteUrl);
+		git.execute(infoLogger, errorLogger).checkReturnCode();
+		
 		if (new File(git.workingDir(), ".gitmodules").exists()) {
 			// deinit submodules in case submodule url is changed
 			git.clearArgs();
@@ -610,12 +623,7 @@ public class KubernetesHelper {
 				}
 				
 			}).checkReturnCode();
-		}
-	}
-	
-	public static void updateSubmodulesIfNecessary(Commandline git, int cloneDepth,
-			LineConsumer infoLogger, LineConsumer errorLogger) {
-		if (new File(git.workingDir(), ".gitmodules").exists()) {
+			
 			infoLogger.consume("Retrieving submodules...");
 			
 			git.clearArgs();
@@ -637,21 +645,6 @@ public class KubernetesHelper {
 				
 			}).checkReturnCode();
 		}
-	}
-	
-	public static void cloneRepository(Commandline git, String cloneUrl, String commitHash, 
-			int cloneDepth, LineConsumer infoLogger, LineConsumer errorLogger) {
-		initRepositoryIfNecessary(git, infoLogger, errorLogger);
-		
-		git.clearArgs();
-		git.addArgs("fetch", cloneUrl, "--force", "--quiet");
-		if (cloneDepth != 0)
-			git.addArgs("--depth=" + cloneDepth);
-		git.addArgs(commitHash);
-		git.execute(infoLogger, errorLogger).checkReturnCode();
-
-		checkoutRepository(git, commitHash, infoLogger, errorLogger);
-		deinitSubmodulesIfNecessary(git, infoLogger, errorLogger);
 	}
 	
 	private static JobData readJobData() {
@@ -848,17 +841,8 @@ public class KubernetesHelper {
 					infoLogger, errorLogger);
 		}
 		
-		cloneRepository(git, cloneInfo.getCloneUrl(), jobData.getCommitHash(), cloneDepth, 
-				infoLogger, errorLogger);
-		addOriginRemote(git, cloneInfo.getCloneUrl(), infoLogger, errorLogger);
-		updateSubmodulesIfNecessary(git, cloneDepth, infoLogger, errorLogger);		
-	}
-	
-	public static void addOriginRemote(Commandline git, String remoteUrl, 
-			LineConsumer infoLogger, LineConsumer errorLogger) {
-		git.clearArgs();
-		git.addArgs("remote", "add", "origin", remoteUrl);
-		git.execute(infoLogger, errorLogger).checkReturnCode();
+		cloneRepository(git, cloneInfo.getCloneUrl(), cloneInfo.getCloneUrl(), 
+				jobData.getCommitHash(), cloneDepth, infoLogger, errorLogger);
 	}
 	
 	public static void runServerStep(String serverUrl, String jobToken, String positionStr, 
@@ -987,6 +971,28 @@ public class KubernetesHelper {
          }  
          matcher.appendTail(buffer);  
          return buffer.toString();
+	}
+	
+	public static String[] resolveCachePath(String basePath, String cachePath) {
+		if (cachePath.startsWith(HOME_PREFIX)) { 
+			cachePath = cachePath.substring(HOME_PREFIX.length());
+			if (SystemUtils.IS_OS_WINDOWS) {
+				cachePath = cachePath.replace('/', '\\');
+				if (cachePath.startsWith("\\"))
+					cachePath = cachePath.substring(1);
+				return new String[] {
+						"C:\\Users\\ContainerAdministrator\\" + cachePath,
+						"C:\\Users\\ContainerUser\\" + cachePath
+				};
+			} else {
+				cachePath = cachePath.replace('\\', '/');
+				if (cachePath.startsWith("/"))
+					cachePath = cachePath.substring(1);
+				return new String[] {"/root/" + cachePath};
+			}
+		} else {
+			return new String[] {PathUtils.resolve(basePath, cachePath)};
+		}
 	}
 	
 	public static String replacePlaceholders(String string, File buildHome) {
