@@ -19,6 +19,7 @@ import java.util.HashSet;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Consumer;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -52,6 +53,7 @@ import io.onedev.commons.utils.FileUtils;
 import io.onedev.commons.utils.PathUtils;
 import io.onedev.commons.utils.TaskLogger;
 import io.onedev.commons.utils.command.Commandline;
+import io.onedev.commons.utils.command.ExecutionResult;
 import io.onedev.commons.utils.command.LineConsumer;
 
 public class KubernetesHelper {
@@ -604,9 +606,22 @@ public class KubernetesHelper {
 
 		checkoutRepository(git, commitHash, infoLogger, errorLogger);
 		
+		AtomicBoolean originExists = new AtomicBoolean(false);
 		git.clearArgs();
 		git.addArgs("remote", "add", "origin", remoteUrl);
-		git.execute(infoLogger, errorLogger).checkReturnCode();
+		ExecutionResult result = git.execute(infoLogger, new LineConsumer() {
+
+			@Override
+			public void consume(String line) {
+				if (line.equals("error: remote origin already exists."))
+					originExists.set(true);
+				else
+					errorLogger.consume(line);
+			}
+			
+		});
+		if (!originExists.get())
+			result.checkReturnCode();
 		
 		if (new File(git.workingDir(), ".gitmodules").exists()) {
 			// deinit submodules in case submodule url is changed
