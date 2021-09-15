@@ -24,7 +24,7 @@ public class Init {
 			logger.info(KubernetesHelper.LOG_END_MESSAGE);
 			System.exit(0);
 		} catch (Exception e) {
-			logger.error(TaskLogger.wrapWithAnsiError("Error executing init logic"), e);
+			logger.error(TaskLogger.wrapWithAnsiError(TaskLogger.toString(null, e)));
 			logger.info(KubernetesHelper.LOG_END_MESSAGE);
 			System.exit(1);
 		}

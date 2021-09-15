@@ -23,7 +23,7 @@ public class RunServerStep {
 
 			KubernetesHelper.runServerStep(serverUrl, jobToken, args[0], args[1], args[2], args[3]);
 		} catch (Exception e) {
-			logger.error(TaskLogger.wrapWithAnsiError("Error executing step"), e);
+			logger.error(TaskLogger.wrapWithAnsiError(TaskLogger.toString(null, e)));
 			exitCode = 1;
 		} finally {
 			logger.info(KubernetesHelper.LOG_END_MESSAGE);

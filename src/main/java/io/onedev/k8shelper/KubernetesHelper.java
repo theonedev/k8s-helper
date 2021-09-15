@@ -199,12 +199,12 @@ public class KubernetesHelper {
 						"@echo off",
 						":wait",
 						"if exist \"" + markPrefix + ".skip\" (",
-						"  echo Skipping step ^\"" + escapedStepNames + "^\"...",
+						"  echo " + TaskLogger.wrapWithAnsiNotice("Step ^\"" + escapedStepNames + "^\" is skipped"),
 						"  echo " + LOG_END_MESSAGE,
 						"  goto :eof",
 						")",
 						"if exist \"" + markPrefix + ".error\" (",
-						"  echo Running step ^\"" + escapedStepNames + "^\"...",
+						"  echo " + TaskLogger.wrapWithAnsiNotice("Running step ^\"" + escapedStepNames + "^\"..."),
 						"  type " + markPrefix + ".error",
 						"  copy /y nul " + markPrefix + ".failed > nul",
 						"  echo " + LOG_END_MESSAGE,
@@ -216,10 +216,11 @@ public class KubernetesHelper {
 						":start",
 						"cd " + getWorkspace().getAbsolutePath() 
 								+ " && cmd /c " + setupScriptFile.getAbsolutePath()
-								+ " && cmd /c echo Running step ^\"" + escapedStepNames + "^\"..."
+								+ " && cmd /c echo " + TaskLogger.wrapWithAnsiNotice("Running step ^\"" + escapedStepNames + "^\"...")
 								+ " && cmd /c " + stepScriptFile.getAbsolutePath(), 
 						"set exit_code=%errorlevel%",
 						"if \"%exit_code%\"==\"0\" (",
+						"	echo " + TaskLogger.wrapWithAnsiSuccess("Step ^\"" + escapedStepNames + "^\" is successful"),
 						"	copy /y nul " + markPrefix + ".successful > nul",
 						") else (",
 						"	copy /y nul " + markPrefix + ".failed > nul",
@@ -245,13 +246,13 @@ public class KubernetesHelper {
 						"done",
 						"if [ -f " + markPrefix + ".skip ]",
 						"then",
-						"  echo 'Skipping step \"" + escapedStepNames + "\"...'",
+						"  echo '" + TaskLogger.wrapWithAnsiNotice("Step \"" + escapedStepNames + "\" is skipped") + "'",
 						"  echo " + LOG_END_MESSAGE,
 						"  exit 0",
 						"fi",
 						"if [ -f " + markPrefix + ".error ]",
 						"then",
-						"  echo 'Running step \"" + escapedStepNames + "\"...'",
+						"  echo '" + TaskLogger.wrapWithAnsiNotice("Running step \"" + escapedStepNames + "\"...") + "'",
 						"  cat " + markPrefix + ".error",
 						"  touch " + markPrefix + ".failed",
 						"  echo " + LOG_END_MESSAGE,
@@ -259,11 +260,12 @@ public class KubernetesHelper {
 						"fi",
 						"cd " + getWorkspace().getAbsolutePath() 
 								+ " && sh " + setupScriptFile.getAbsolutePath()
-								+ " && echo 'Running step \"" + escapedStepNames + "\"...'" 
+								+ " && echo '" + TaskLogger.wrapWithAnsiNotice("Running step \"" + escapedStepNames + "\"...") + "'" 
 								+ " && sh " + stepScriptFile.getAbsolutePath(), 
 						"exitCode=\"$?\"", 
 						"if [ $exitCode -eq 0 ]",
 						"then",
+						"  echo '" + TaskLogger.wrapWithAnsiSuccess("Step \"" + escapedStepNames + "\" is successful") + "'",
 						"  touch " + markPrefix + ".successful",
 						"else",
 						"  touch " + markPrefix + ".failed",
