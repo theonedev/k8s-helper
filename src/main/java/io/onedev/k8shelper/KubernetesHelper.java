@@ -497,9 +497,9 @@ public class KubernetesHelper {
 							if (executable instanceof CheckoutExecutable) {
 								CheckoutExecutable checkoutExecutable = (CheckoutExecutable) executable;
 								checkoutExecutable.getCloneInfo();
-								command = String.format("java -classpath \"%s\" io.onedev.k8shelper.CheckoutCode %s %d %s", 
-										classPath, positionStr, checkoutExecutable.getCloneDepth(), 
-										checkoutExecutable.getCloneInfo().toString());
+								command = String.format("java -classpath \"%s\" io.onedev.k8shelper.CheckoutCode %s %b %b %d %s", 
+										classPath, positionStr, checkoutExecutable.isWithLfs(), checkoutExecutable.isWithSubmodules(), 
+										checkoutExecutable.getCloneDepth(), checkoutExecutable.getCloneInfo().toString());
 							} else {
 								ServerExecutable serverExecutable = (ServerExecutable) executable;
 								
@@ -568,15 +568,9 @@ public class KubernetesHelper {
 		} 
 	}
 
-	public static void checkoutRepository(Commandline git, String commitHash, 
-			LineConsumer infoLogger, LineConsumer errorLogger) {
-		git.clearArgs();
-		git.addArgs("checkout", "--quiet", commitHash);
-		git.execute(infoLogger, errorLogger).checkReturnCode();
-	}
-	
 	public static void cloneRepository(Commandline git, String cloneUrl, String remoteUrl, 
-			String commitHash, int cloneDepth, LineConsumer infoLogger, LineConsumer errorLogger) {
+			String commitHash, boolean withLfs, boolean withSubmodules, int cloneDepth, 
+			LineConsumer infoLogger, LineConsumer errorLogger) {
 		git.clearArgs();
 		if (!new File(git.workingDir(), ".git").exists()) {
 			git.addArgs("init", ".");
@@ -606,8 +600,6 @@ public class KubernetesHelper {
 		git.addArgs(commitHash);
 		git.execute(infoLogger, errorLogger).checkReturnCode();
 
-		checkoutRepository(git, commitHash, infoLogger, errorLogger);
-		
 		AtomicBoolean originExists = new AtomicBoolean(false);
 		git.clearArgs();
 		git.addArgs("remote", "add", "origin", remoteUrl);
@@ -625,7 +617,32 @@ public class KubernetesHelper {
 		if (!originExists.get())
 			result.checkReturnCode();
 		
-		if (new File(git.workingDir(), ".gitmodules").exists()) {
+		if (withLfs) {
+			if (SystemUtils.IS_OS_MAC_OSX) {
+				String path = System.getenv("PATH") + ":/usr/local/bin";
+				git.environments().put("PATH", path);
+			}
+			
+			git.clearArgs();
+			git.addArgs("lfs", "install");
+			git.execute(infoLogger, errorLogger).checkReturnCode();
+		}
+		
+		git.clearArgs();
+		git.addArgs("checkout", "--quiet", commitHash);
+		git.execute(infoLogger, new LineConsumer() {
+
+			@Override
+			public void consume(String line) {
+				if (line.startsWith("Filtering content:"))
+					infoLogger.consume(line);
+				else
+					errorLogger.consume(line);
+			}
+			
+		}).checkReturnCode();
+		
+		if (withSubmodules && new File(git.workingDir(), ".gitmodules").exists()) {
 			// deinit submodules in case submodule url is changed
 			git.clearArgs();
 			git.addArgs("submodule", "deinit", "--all", "--force", "--quiet");
@@ -672,6 +689,48 @@ public class KubernetesHelper {
 			throw new RuntimeException(e);
 		}
 		return SerializationUtils.deserialize(jobDataBytes);
+	}
+	
+	public static void testGitLfsAvailability(Commandline git, TaskLogger jobLogger) {
+		File userHome = FileUtils.createTempDir("user");
+		try {
+			jobLogger.log("Checking if git-lfs exists...");
+			git.clearArgs();
+			git.environments().put("HOME", userHome.getAbsolutePath());
+			if (SystemUtils.IS_OS_MAC_OSX) {
+				String path = System.getenv("PATH") + ":/usr/local/bin";
+				git.environments().put("PATH", path);
+			}
+			
+			git.addArgs("lfs", "version");
+
+			AtomicBoolean lfsExists = new AtomicBoolean(true);
+			ExecutionResult result = git.execute(new LineConsumer() {
+
+				@Override
+				public void consume(String line) {
+				}
+				
+			}, new LineConsumer() {
+
+				@Override
+				public void consume(String line) {
+					if (line.startsWith("git: 'lfs' is not a git command"))
+						lfsExists.set(false);
+					if (lfsExists.get())
+						jobLogger.error(line);
+				}
+				
+			});
+			if (lfsExists.get()) {
+				result.checkReturnCode();
+				jobLogger.log("git-lfs found");
+			} else { 
+				jobLogger.warning("WARNING: Executable 'git-lfs' not found. You will not be able to retrieve LFS files");
+			}
+		} finally {
+			FileUtils.deleteDir(userHome, 3);
+		}
 	}
 
 	public static void sidecar(String serverUrl, String jobToken, boolean test) {
@@ -819,7 +878,7 @@ public class KubernetesHelper {
 	}
 	
 	public static void checkoutCode(String serverUrl, String jobToken, String positionStr, 
-			int cloneDepth, CloneInfo cloneInfo) throws IOException {
+			boolean withLfs, boolean withSubmodules, int cloneDepth, CloneInfo cloneInfo) throws IOException {
 		JobData jobData = readJobData();
 		
 		logger.info("Checking out code from {}...", cloneInfo.getCloneUrl());
@@ -859,7 +918,8 @@ public class KubernetesHelper {
 		}
 		
 		cloneRepository(git, cloneInfo.getCloneUrl(), cloneInfo.getCloneUrl(), 
-				jobData.getCommitHash(), cloneDepth, infoLogger, errorLogger);
+				jobData.getCommitHash(), withLfs, withSubmodules, cloneDepth, 
+				infoLogger, errorLogger);
 	}
 	
 	public static void runServerStep(String serverUrl, String jobToken, String positionStr, 

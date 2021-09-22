@@ -19,8 +19,8 @@ public class CheckoutCode {
 			if (jobToken == null)
 				throw new RuntimeException("Environment '" + KubernetesHelper.ENV_JOB_TOKEN + "' is not defined");
 
-			KubernetesHelper.checkoutCode(serverUrl, jobToken, args[0], 
-					Integer.parseInt(args[1]), CloneInfo.fromString(args[2]));
+			KubernetesHelper.checkoutCode(serverUrl, jobToken, args[0], Boolean.parseBoolean(args[1]), 
+					Boolean.parseBoolean(args[2]), Integer.parseInt(args[3]), CloneInfo.fromString(args[4]));
 		} catch (Exception e) {
 			logger.error("Error executing step", e);
 			exitCode = 1;
