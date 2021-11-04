@@ -70,8 +70,6 @@ public class KubernetesHelper {
 	
 	public static final String WORKSPACE = "workspace";
 	
-	public static final String HOME_PREFIX = "home:";
-	
 	public static final String ATTRIBUTES = "attributes";
 	
 	public static final String PLACEHOLDER_PREFIX = "<&onedev#";
@@ -463,20 +461,19 @@ public class KubernetesHelper {
 						
 						for (Map.Entry<CacheInstance, String> entry: cacheAllocations.entrySet()) {
 							if (!PathUtils.isCurrent(entry.getValue())) {
-								for (String link: resolveCachePath(workspace.getAbsolutePath(), entry.getValue())) {
-									File linkTarget = entry.getKey().getDirectory(cacheHome);
-									// create possible missing parent directories
-									if (isWindows()) {
-										setupCommands.add(String.format("echo Setting up cache \"%s\"...", link));							
-										setupCommands.add(String.format("if not exist \"%s\" mkdir \"%s\"", link, link)); 
-										setupCommands.add(String.format("rmdir /q /s \"%s\"", link));							
-										setupCommands.add(String.format("mklink /D \"%s\" \"%s\"", link, linkTarget.getAbsolutePath()));
-									} else {
-										setupCommands.add(String.format("echo Setting up cache \"%s\"...", link));							
-										setupCommands.add(String.format("mkdir -p \"%s\"", link)); 
-										setupCommands.add(String.format("rm -rf \"%s\"", link));
-										setupCommands.add(String.format("ln -s \"%s\" \"%s\"", linkTarget.getAbsolutePath(), link));
-									}
+								String link = PathUtils.resolve(workspace.getAbsolutePath(), entry.getValue()); 
+								File linkTarget = entry.getKey().getDirectory(cacheHome);
+								// create possible missing parent directories
+								if (isWindows()) {
+									setupCommands.add(String.format("echo Setting up cache \"%s\"...", link));							
+									setupCommands.add(String.format("if not exist \"%s\" mkdir \"%s\"", link, link)); 
+									setupCommands.add(String.format("rmdir /q /s \"%s\"", link));							
+									setupCommands.add(String.format("mklink /D \"%s\" \"%s\"", link, linkTarget.getAbsolutePath()));
+								} else {
+									setupCommands.add(String.format("echo Setting up cache \"%s\"...", link));							
+									setupCommands.add(String.format("mkdir -p \"%s\"", link)); 
+									setupCommands.add(String.format("rm -rf \"%s\"", link));
+									setupCommands.add(String.format("ln -s \"%s\" \"%s\"", linkTarget.getAbsolutePath(), link));
 								}
 							}
 						}
@@ -1048,28 +1045,6 @@ public class KubernetesHelper {
          }  
          matcher.appendTail(buffer);  
          return buffer.toString();
-	}
-	
-	public static String[] resolveCachePath(String basePath, String cachePath) {
-		if (cachePath.startsWith(HOME_PREFIX)) { 
-			cachePath = cachePath.substring(HOME_PREFIX.length());
-			if (SystemUtils.IS_OS_WINDOWS) {
-				cachePath = cachePath.replace('/', '\\');
-				if (cachePath.startsWith("\\"))
-					cachePath = cachePath.substring(1);
-				return new String[] {
-						"C:\\Users\\ContainerAdministrator\\" + cachePath,
-						"C:\\Users\\ContainerUser\\" + cachePath
-				};
-			} else {
-				cachePath = cachePath.replace('\\', '/');
-				if (cachePath.startsWith("/"))
-					cachePath = cachePath.substring(1);
-				return new String[] {"/root/" + cachePath};
-			}
-		} else {
-			return new String[] {PathUtils.resolve(basePath, cachePath)};
-		}
 	}
 	
 	public static String replacePlaceholders(String string, File buildHome) {
