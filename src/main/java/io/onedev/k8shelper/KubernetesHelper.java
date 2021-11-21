@@ -806,27 +806,6 @@ public class KubernetesHelper {
 			List<Action> actions = jobData.getActions();
 			
 			new CompositeExecutable(actions).execute(commandHandler, new ArrayList<>());
-			
-			installJVMCert();
-			
-			Client client = ClientBuilder.newClient();
-			try {
-				logger.info("Reporting job caches to '{}'...", serverUrl);
-				WebTarget target = client.target(serverUrl).path("api/k8s/report-job-caches");
-				Invocation.Builder builder = target.request();
-				builder.header(HttpHeaders.AUTHORIZATION, BEARER + " " + jobToken);
-				StringBuilder toStringBuilder = new StringBuilder();
-				for (CacheInstance instance: getCacheInstances(getCacheHome()).keySet()) 
-					toStringBuilder.append(instance.toString()).append(";");
-				Response response = builder.post(Entity.entity(toStringBuilder.toString(), MediaType.APPLICATION_OCTET_STREAM));
-				try {
-					checkStatus(response);
-				} finally {
-					response.close();
-				}
-			} finally {
-				client.close();
-			}
 		} 
 	}
 	
