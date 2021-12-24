@@ -83,7 +83,7 @@ public class KubernetesHelper {
 	private static final Object cacheHomeCreationLock = new Object();
 	
 	private static File getBuildHome() {
-		if (isWindows()) 
+		if (SystemUtils.IS_OS_WINDOWS) 
 			return new File("C:\\onedev-build");
 		else 
 			return new File("/onedev-build");
@@ -94,7 +94,7 @@ public class KubernetesHelper {
 	}
 	
 	private static File getTrustCertsHome() {
-		if (isWindows()) 
+		if (SystemUtils.IS_OS_WINDOWS) 
 			return new File("C:\\onedev-build\\trust-certs");
 		else 
 			return new File("/onedev-build/trust-certs");
@@ -102,7 +102,7 @@ public class KubernetesHelper {
 	
 	private static File getCacheHome() {
 		File file;
-		if (isWindows())
+		if (SystemUtils.IS_OS_WINDOWS) 
 			file = new File("C:\\onedev-build\\cache");
 		else
 			file = new File("/onedev-build/cache");
@@ -122,10 +122,6 @@ public class KubernetesHelper {
 	
 	private static File getMarkHome() {
 		return new File(getBuildHome(), "mark");
-	}
-	
-	private static boolean isWindows() {
-		return System.getProperty("os.name").toLowerCase().contains("windows");
 	}
 	
 	public static Map<CacheInstance, Date> getCacheInstances(File cacheHome) {
@@ -176,20 +172,20 @@ public class KubernetesHelper {
 	}
 	
 	private static void generateCommandScript(List<Integer> position, String stepNames, 
-			List<String> setupCommands, List<String> stepCommands) {
+			List<String> setupCommands, CommandExecutable commandExecutable) {
 		try {
 			String positionStr = stringifyPosition(position);
 			File commandHome = getCommandHome();
-			if (isWindows()) {
+			File stepScriptFile = new File(commandHome, "step-" + positionStr + commandExecutable.getScriptExtension());
+			FileUtils.writeLines(stepScriptFile, commandExecutable.getCommands(), commandExecutable.getEndOfLine());
+			
+ 			if (SystemUtils.IS_OS_WINDOWS) { 
 				StringBuilder escapedStepNames = new StringBuilder();
 				for (int i=0; i<stepNames.length(); i++)
 					escapedStepNames.append('^').append(stepNames.charAt(i));
 				
 				File setupScriptFile = new File(commandHome, "setup-" + positionStr + ".bat");
 				FileUtils.writeLines(setupScriptFile, setupCommands, "\r\n");
-				
-				File stepScriptFile = new File(commandHome, "step-" + positionStr + ".bat");
-				FileUtils.writeLines(stepScriptFile, stepCommands, "\r\n");
 				
 				File scriptFile = new File(commandHome, positionStr + ".bat");
 				String markPrefix = getMarkHome().getAbsolutePath() + "\\" + positionStr;
@@ -215,7 +211,7 @@ public class KubernetesHelper {
 						"cd " + getWorkspace().getAbsolutePath() 
 								+ " && cmd /c " + setupScriptFile.getAbsolutePath()
 								+ " && cmd /c echo " + TaskLogger.wrapWithAnsiNotice("Running step ^\"" + escapedStepNames + "^\"...")
-								+ " && cmd /c " + stepScriptFile.getAbsolutePath(), 
+								+ " && " + commandExecutable.getInterpreter() + " " + stepScriptFile.getAbsolutePath(), 
 						"set exit_code=%errorlevel%",
 						"if \"%exit_code%\"==\"0\" (",
 						"	echo " + TaskLogger.wrapWithAnsiSuccess("Step ^\"" + escapedStepNames + "^\" is successful"),
@@ -231,9 +227,6 @@ public class KubernetesHelper {
 				
 				File setupScriptFile = new File(commandHome, "setup-" + positionStr + ".sh");
 				FileUtils.writeLines(setupScriptFile, setupCommands, "\n");
-				
-				File stepScriptFile = new File(commandHome, "step-" + positionStr + ".sh");
-				FileUtils.writeLines(stepScriptFile, stepCommands, "\n");
 				
 				File scriptFile = new File(commandHome, positionStr + ".sh");
 				String markPrefix = getMarkHome().getAbsolutePath() + "/" + positionStr;
@@ -259,7 +252,7 @@ public class KubernetesHelper {
 						"cd " + getWorkspace().getAbsolutePath() 
 								+ " && sh " + setupScriptFile.getAbsolutePath()
 								+ " && echo '" + TaskLogger.wrapWithAnsiNotice("Running step \"" + escapedStepNames + "\"...") + "'" 
-								+ " && sh " + stepScriptFile.getAbsolutePath(), 
+								+ " && " + commandExecutable.getInterpreter() + " " + stepScriptFile.getAbsolutePath(), 
 						"exitCode=\"$?\"", 
 						"if [ $exitCode -eq 0 ]",
 						"then",
@@ -378,13 +371,12 @@ public class KubernetesHelper {
 						tempFile.delete();
 				}
 				FileUtils.createDir(getWorkspace());
-				if (isWindows()) {
-					generateCommandScript(Lists.newArrayList(0), "test", Lists.newArrayList(), 
-							Lists.newArrayList("@echo off", "echo hello from container"));
-				} else {
-					generateCommandScript(Lists.newArrayList(0), "test", Lists.newArrayList(), 
-							Lists.newArrayList("echo hello from container"));
-				}
+				List<String> commands = new ArrayList<>();
+				if (SystemUtils.IS_OS_WINDOWS)  
+					commands.add("@echo off");
+				commands.add("echo hello from container");
+				generateCommandScript(Lists.newArrayList(0), "test", Lists.newArrayList(), 
+						new CommandExecutable("any", commands, true));
 			} else {
 				WebTarget target = client.target(serverUrl).path("api/k8s/job-data");
 				Invocation.Builder builder =  target.request();
@@ -452,7 +444,7 @@ public class KubernetesHelper {
 						String stepNames = entryExecutable.getNamesAsString(position);
 
 						List<String> setupCommands = new ArrayList<>();
-						if (isWindows()) {
+						if (SystemUtils.IS_OS_WINDOWS) { 
 							setupCommands.add("@echo off");							
 							setupCommands.add("xcopy /Y /S /K /Q /H /R C:\\Users\\%USERNAME%\\auth-info\\* C:\\Users\\%USERNAME% > nul");
 						} else { 
@@ -464,7 +456,7 @@ public class KubernetesHelper {
 								String link = PathUtils.resolve(workspace.getAbsolutePath(), entry.getValue()); 
 								File linkTarget = entry.getKey().getDirectory(cacheHome);
 								// create possible missing parent directories
-								if (isWindows()) {
+								if (SystemUtils.IS_OS_WINDOWS) { 
 									setupCommands.add(String.format("echo Setting up cache \"%s\"...", link));							
 									setupCommands.add(String.format("if not exist \"%s\" mkdir \"%s\"", link, link)); 
 									setupCommands.add(String.format("rmdir /q /s \"%s\"", link));							
@@ -480,17 +472,16 @@ public class KubernetesHelper {
 						
 						String positionStr = stringifyPosition(position);
 
-						List<String> commands;
-						
+						CommandExecutable commandExecutable;
 						if (executable instanceof CommandExecutable) {
-							commands = ((CommandExecutable) executable).getCommands();
+							commandExecutable = (CommandExecutable) executable;
 						} else {
 							String command;
 							String classPath;
-							if (SystemUtils.IS_OS_LINUX) 
-								classPath = "/k8s-helper/*";
-							else 
+							if (SystemUtils.IS_OS_WINDOWS) 
 								classPath = "C:\\k8s-helper\\*";
+							else 
+								classPath = "/k8s-helper/*";
 							if (executable instanceof CheckoutExecutable) {
 								CheckoutExecutable checkoutExecutable = (CheckoutExecutable) executable;
 								checkoutExecutable.getCloneInfo();
@@ -506,13 +497,16 @@ public class KubernetesHelper {
 								command = String.format("java -classpath \"%s\" io.onedev.k8shelper.RunServerStep %s %s %s %s", 
 										classPath, positionStr, includeFiles, excludeFiles, placeholders);
 							}							
-							if (SystemUtils.IS_OS_LINUX)
-								commands = Lists.newArrayList(command);
-							else
-								commands = Lists.newArrayList("@echo off", command);
+							
+							List<String> commands = new ArrayList<>();
+							if (SystemUtils.IS_OS_WINDOWS)
+								commands.add("@echo off");
+							commands.add(command);
+							
+							commandExecutable = new CommandExecutable("any", commands, true);
 						} 
 						
-						generateCommandScript(position, stepNames, setupCommands, commands);
+						generateCommandScript(position, stepNames, setupCommands, commandExecutable);
 						
 						return null;
 					}
