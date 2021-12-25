@@ -43,6 +43,7 @@ import org.glassfish.jersey.client.ClientProperties;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import com.google.common.base.Preconditions;
 import com.google.common.base.Splitter;
 import com.google.common.base.Throwables;
 import com.google.common.collect.Lists;
@@ -733,11 +734,14 @@ public class KubernetesHelper {
 				
 				File file;
 				
-				File stepScriptFile;
-				if (SystemUtils.IS_OS_WINDOWS)
-					stepScriptFile = new File(getCommandHome(), "step-" + positionStr + ".bat");
-				else
-					stepScriptFile = new File(getCommandHome(), "step-" + positionStr + ".sh");
+				File stepScriptFile = null;
+				for (File eachFile: getCommandHome().listFiles()) {
+					if (eachFile.getName().startsWith("step-" + positionStr + ".")) {
+						stepScriptFile = eachFile;
+						break;
+					}
+				}
+				Preconditions.checkState(stepScriptFile != null);
 
 				try {
 					String stepScript = FileUtils.readFileToString(stepScriptFile, UTF_8);
