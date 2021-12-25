@@ -31,6 +31,11 @@ public class SshCloneInfo extends CloneInfo {
 		FileUtils.createDir(sshDir);
 		
 		File privateKeyFile = new File(sshDir, "id_rsa");
+		if (privateKeyFile.exists() && !SystemUtils.IS_OS_WINDOWS) {
+			Commandline chmod = new Commandline("chmod");
+			chmod.workingDir(sshDir).addArgs("600", "id_rsa");
+			chmod.execute(infoLogger, errorLogger).checkReturnCode();
+		}
 		FileUtils.writeFile(privateKeyFile, privateKey);
 		File knownHostsFile = new File(sshDir, "known_hosts");
 		FileUtils.writeFile(knownHostsFile, knownHosts);
@@ -38,7 +43,7 @@ public class SshCloneInfo extends CloneInfo {
 			Commandline chmod = new Commandline("chmod");
 			chmod.workingDir(sshDir).addArgs("400", "id_rsa");
 			chmod.execute(infoLogger, errorLogger).checkReturnCode();
-			
+
 			git.clearArgs();
 			git.addArgs("config", "--global", "core.sshCommand", "ssh -i \"" + privateKeyFile.getAbsolutePath() + "\" -o UserKnownHostsFile=\"" + knownHostsFile.getAbsolutePath() + "\" -F /dev/null");
 			git.execute(infoLogger, errorLogger).checkReturnCode();
