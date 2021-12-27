@@ -7,10 +7,11 @@ import java.io.FileFilter;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.io.StringReader;
 import java.nio.ByteBuffer;
 import java.nio.charset.Charset;
-import java.nio.file.Files;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Base64;
 import java.util.Collection;
 import java.util.Date;
@@ -25,6 +26,7 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
+import javax.annotation.Nullable;
 import javax.ws.rs.client.Client;
 import javax.ws.rs.client.ClientBuilder;
 import javax.ws.rs.client.Entity;
@@ -37,12 +39,13 @@ import javax.ws.rs.core.StreamingOutput;
 
 import org.apache.commons.compress.utils.IOUtils;
 import org.apache.commons.lang3.SerializationUtils;
-import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.SystemUtils;
 import org.glassfish.jersey.client.ClientProperties;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.common.base.Preconditions;
 import com.google.common.base.Splitter;
 import com.google.common.base.Throwables;
@@ -52,6 +55,7 @@ import io.onedev.commons.utils.ExceptionUtils;
 import io.onedev.commons.utils.ExplicitException;
 import io.onedev.commons.utils.FileUtils;
 import io.onedev.commons.utils.PathUtils;
+import io.onedev.commons.utils.StringUtils;
 import io.onedev.commons.utils.TaskLogger;
 import io.onedev.commons.utils.command.Commandline;
 import io.onedev.commons.utils.command.ExecutionResult;
@@ -173,7 +177,7 @@ public class KubernetesHelper {
 	}
 	
 	private static void generateCommandScript(List<Integer> position, String stepNames, 
-			List<String> setupCommands, CommandExecutable commandExecutable) {
+			List<String> setupCommands, CommandExecutable commandExecutable, File workspace) {
 		try {
 			String positionStr = stringifyPosition(position);
 			File commandHome = getCommandHome();
@@ -209,7 +213,7 @@ public class KubernetesHelper {
 						"ping 127.0.0.1 -n 2 > nul",
 						"goto wait",
 						":start",
-						"cd " + getWorkspace().getAbsolutePath() 
+						"cd " + workspace.getAbsolutePath() 
 								+ " && cmd /c " + setupScriptFile.getAbsolutePath()
 								+ " && cmd /c echo " + TaskLogger.wrapWithAnsiNotice("Running step ^\"" + escapedStepNames + "^\"...")
 								+ " && " + commandExecutable.getInterpreter() + " " + stepScriptFile.getAbsolutePath(), 
@@ -250,7 +254,7 @@ public class KubernetesHelper {
 						"  echo " + LOG_END_MESSAGE,
 						"  exit 1",
 						"fi",
-						"cd " + getWorkspace().getAbsolutePath() 
+						"cd " + workspace.getAbsolutePath() 
 								+ " && sh " + setupScriptFile.getAbsolutePath()
 								+ " && echo '" + TaskLogger.wrapWithAnsiNotice("Running step \"" + escapedStepNames + "\"...") + "'" 
 								+ " && " + commandExecutable.getInterpreter() + " " + stepScriptFile.getAbsolutePath(), 
@@ -377,7 +381,7 @@ public class KubernetesHelper {
 					commands.add("@echo off");
 				commands.add("echo hello from container");
 				generateCommandScript(Lists.newArrayList(0), "test", Lists.newArrayList(), 
-						new CommandExecutable("any", commands, true));
+						new CommandExecutable("any", commands, true), getWorkspace());
 			} else {
 				WebTarget target = client.target(serverUrl).path("api/k8s/job-data");
 				Invocation.Builder builder =  target.request();
@@ -397,7 +401,6 @@ public class KubernetesHelper {
 				jobData = SerializationUtils.deserialize(jobDataBytes);
 				
 				File workspace = getWorkspace();
-				File workspaceCache = null;
 				
 				logger.info("Allocating job caches from {}...", serverUrl);
 				target = client.target(serverUrl).path("api/k8s/allocate-job-caches");
@@ -419,21 +422,7 @@ public class KubernetesHelper {
 					}
 					
 				});
-				for (Map.Entry<CacheInstance, String> entry: cacheAllocations.entrySet()) {
-					if (PathUtils.isCurrent(entry.getValue())) {
-						workspaceCache = entry.getKey().getDirectory(getCacheHome());
-						break;
-					}
-				}
-				if (workspaceCache != null) {
-					try {
-						Files.createSymbolicLink(workspace.toPath(), workspaceCache.toPath());
-					} catch (IOException e) {
-						throw new RuntimeException(e);
-					}
-				} else {
-					FileUtils.createDir(workspace);
-				}
+				FileUtils.createDir(workspace);
 				
 				logger.info("Generating command scripts...");
 				
@@ -468,14 +457,24 @@ public class KubernetesHelper {
 									setupCommands.add(String.format("rm -rf \"%s\"", link));
 									setupCommands.add(String.format("ln -s \"%s\" \"%s\"", linkTarget.getAbsolutePath(), link));
 								}
+							} else {
+								throw new ExplicitException("Invalid cache path: " + entry.getValue());
 							}
 						}
 						
 						String positionStr = stringifyPosition(position);
 
+						File workingDir = getWorkspace();
 						CommandExecutable commandExecutable;
 						if (executable instanceof CommandExecutable) {
 							commandExecutable = (CommandExecutable) executable;
+						} else if (executable instanceof ContainerExecutable) {
+							ContainerExecutable containerExecutable = (ContainerExecutable) executable;
+							if (containerExecutable.getWorkingDir() != null)
+								workingDir = new File(containerExecutable.getWorkingDir());
+							// We will inspect container image and populate appropriate commands in sidecar as 
+							// container images are not pulled at init stage
+							commandExecutable = new CommandExecutable("any", Lists.newArrayList(), true);
 						} else {
 							String command;
 							String classPath;
@@ -507,7 +506,7 @@ public class KubernetesHelper {
 							commandExecutable = new CommandExecutable("any", commands, true);
 						} 
 						
-						generateCommandScript(position, stepNames, setupCommands, commandExecutable);
+						generateCommandScript(position, stepNames, setupCommands, commandExecutable, workingDir);
 						
 						return null;
 					}
@@ -725,6 +724,119 @@ public class KubernetesHelper {
 		}
 	}
 
+	@Nullable
+	private static ContainerCommand getContainerCommand(String image, Commandline inspect) {
+		AtomicBoolean imageNotAvailable = new AtomicBoolean(false);
+		
+		StringBuilder builder = new StringBuilder();
+		ExecutionResult result = inspect.addArgs("image", "inspect", image).execute(new LineConsumer() {
+
+			@Override
+			public void consume(String line) {
+				builder.append(line).append("\n");
+			}
+			
+		}, new LineConsumer() {
+
+			@Override
+			public void consume(String line) {
+				if (line.startsWith("Error: No such image:") || line.contains("[no such object:"))
+					imageNotAvailable.set(true);
+				else
+					logger.error(TaskLogger.wrapWithAnsiError(line));
+			}
+			
+		});
+		
+ 		if (!imageNotAvailable.get()) {
+			result.checkReturnCode();
+		
+			try {
+				JsonNode rootNode = new ObjectMapper().readTree(new StringReader(builder.toString()));
+				for (JsonNode imageNode: rootNode) {
+					JsonNode configNode = imageNode.get("Config");
+					
+					JsonNode entrypointNode = configNode.get("Entrypoint");
+					List<String> entrypoint =  new ArrayList<>();
+					if (entrypointNode != null && !entrypointNode.isNull()) {
+						for (JsonNode elementNode: entrypointNode)
+							entrypoint.add(elementNode.asText());
+					}
+					
+					JsonNode cmdNode = configNode.get("Cmd");
+					List<String> cmd =  new ArrayList<>();
+					if (cmdNode != null && !cmdNode.isNull()) {
+						for (JsonNode elementNode: cmdNode)
+							cmd.add(elementNode.asText());
+					}
+					
+					return new ContainerCommand(entrypoint, cmd);
+				}
+			} catch (IOException e) {
+				throw new RuntimeException(e);
+			}
+ 		} 
+ 		return null;
+	}
+	
+	private static String getContainerRunScript(String image, @Nullable String args) {
+		while (true) {
+			Commandline inspect = new Commandline("nerdctl").addArgs("-n", "k8s.io");
+			ContainerCommand command = getContainerCommand(image, inspect);
+			if (command == null) {
+				inspect = new Commandline("docker");
+				command = getContainerCommand(image, inspect);
+			}
+			if (command == null) {
+				try {
+					Thread.sleep(1000);
+				} catch (InterruptedException e) {
+					throw new RuntimeException(e);
+				}
+			} else {
+				List<String> effectiveCommand = new ArrayList<>();
+				List<String> parsedArgs;
+				if (args != null) 
+					parsedArgs = Arrays.asList(StringUtils.parseQuoteTokens(args));
+				else
+					parsedArgs = new ArrayList<>();
+				
+				if (!command.getEntrypoint().isEmpty()) {
+					effectiveCommand.addAll(command.getEntrypoint());
+					if (!parsedArgs.isEmpty())
+						effectiveCommand.addAll(parsedArgs);
+					else
+						effectiveCommand.addAll(command.getCmd());
+				} else if (!parsedArgs.isEmpty()) {
+					effectiveCommand.addAll(parsedArgs);
+				} else if (!command.getCmd().isEmpty()) {
+					effectiveCommand.addAll(command.getCmd());
+				} else {
+					throw new ExplicitException("No command specified for image " + image);
+				}
+				
+				StringBuilder commandString = new StringBuilder();
+				for (String element: effectiveCommand) 
+					commandString.append("\"" + StringUtils.replace(element, "\"", "\\\"") + "\" ");
+				
+				StringBuilder builder = new StringBuilder(""
+						+ "_sigterm() {\n"
+						+ "  kill -TERM \"$child\"\n"
+						+ "  wait \"$child\"\n"
+						+ "  exit 1\n"
+						+ "}\n"
+						+ "\n"
+						+ "trap _sigterm TERM\n"
+						+ "trap _sigterm INT\n"
+						+ "\n"
+						+ commandString + "&\n"
+						+ "child=$!\n"
+						+ "wait \"$child\"");
+				return builder.toString();
+			}
+		}
+	}
+	
 	public static void sidecar(String serverUrl, String jobToken, boolean test) {
 		LeafHandler commandHandler = new LeafHandler() {
 
@@ -745,6 +857,12 @@ public class KubernetesHelper {
 
 				try {
 					String stepScript = FileUtils.readFileToString(stepScriptFile, UTF_8);
+					if (executable instanceof ContainerExecutable) {
+						ContainerExecutable containerExecutable = (ContainerExecutable) executable;
+						stepScript = getContainerRunScript(containerExecutable.getImage(), containerExecutable.getArgs());
+					} else {
+						stepScript = FileUtils.readFileToString(stepScriptFile, UTF_8);
+					}
 
 					stepScript = replacePlaceholders(stepScript, getBuildHome());
 					
