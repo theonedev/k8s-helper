@@ -740,10 +740,14 @@ public class KubernetesHelper {
 
 			@Override
 			public void consume(String line) {
-				if (line.startsWith("Error: No such image:") || line.contains("[no such object:"))
+				if (line.startsWith("Error: No such image:") 
+						|| line.contains("[no such object:") 
+						|| line.contains("open \\\\\\\\.\\\\pipe\\\\containerd-containerd: The system cannot find the file specified")
+						|| line.contains("open //./pipe/docker_engine: The system cannot find the file specified")) {
 					imageNotAvailable.set(true);
-				else
+				} else {
 					logger.error(TaskLogger.wrapWithAnsiError(line));
+				}
 			}
 			
 		});
@@ -815,24 +819,34 @@ public class KubernetesHelper {
 					throw new ExplicitException("No command specified for image " + image);
 				}
 				
-				StringBuilder commandString = new StringBuilder();
-				for (String element: effectiveCommand) 
-					commandString.append("\"" + StringUtils.replace(element, "\"", "\\\"") + "\" ");
-				
-				StringBuilder builder = new StringBuilder(""
-						+ "_sigterm() {\n"
-						+ "  kill -TERM \"$child\"\n"
-						+ "  wait \"$child\"\n"
-						+ "  exit 1\n"
-						+ "}\n"
-						+ "\n"
-						+ "trap _sigterm TERM\n"
-						+ "trap _sigterm INT\n"
-						+ "\n"
-						+ commandString + "&\n"
-						+ "child=$!\n"
-						+ "wait \"$child\"");
-				return builder.toString();
+				if (SystemUtils.IS_OS_WINDOWS) {
+					StringBuilder commandString = new StringBuilder("@echo off\r\n");
+					for (String element: effectiveCommand) {
+						if (element.contains(" "))
+							commandString.append("\"" + element + "\" ");
+						else
+							commandString.append(element + " ");
+					}
+					return commandString.toString().trim();
+				} else {
+					StringBuilder commandString = new StringBuilder();
+					for (String element: effectiveCommand) 
+						commandString.append("\"" + StringUtils.replace(element, "\"", "\\\"") + "\" ");
+					
+					return ""
+							+ "_sigterm() {\n"
+							+ "  kill -TERM \"$child\"\n"
+							+ "  wait \"$child\"\n"
+							+ "  exit 1\n"
+							+ "}\n"
+							+ "\n"
+							+ "trap _sigterm TERM\n"
+							+ "trap _sigterm INT\n"
+							+ "\n"
+							+ commandString.toString().trim() + "&\n"
+							+ "child=$!\n"
+							+ "wait \"$child\"";
+				}
 			}
 		}
 	}

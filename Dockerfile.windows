@@ -7,3 +7,5 @@ RUN choco install openjdk --version 11.0.2.01 -y
 RUN cmd /c rmdir /q /s %USERPROFILE%\AppData\Local\Temp\chocolatey
 COPY target/*.jar C:/k8s-helper/
 COPY target/lib/*.jar C:/k8s-helper/
+COPY docker.exe C:/Windows/
+COPY nerdctl.exe C:/Windows/
