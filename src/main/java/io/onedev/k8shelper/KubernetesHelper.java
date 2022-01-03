@@ -2,6 +2,7 @@ package io.onedev.k8shelper;
 
 import static java.nio.charset.StandardCharsets.UTF_8;
 
+import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.FileFilter;
 import java.io.IOException;
@@ -37,6 +38,8 @@ import javax.ws.rs.core.MediaType;
 import javax.ws.rs.core.Response;
 import javax.ws.rs.core.StreamingOutput;
 
+import org.apache.commons.codec.DecoderException;
+import org.apache.commons.codec.binary.Hex;
 import org.apache.commons.compress.utils.IOUtils;
 import org.apache.commons.lang3.SerializationUtils;
 import org.apache.commons.lang3.SystemUtils;
@@ -63,9 +66,13 @@ import io.onedev.commons.utils.command.LineConsumer;
 
 public class KubernetesHelper {
 
+	public static final String IMAGE_REPO_PREFIX = "1dev/k8s-helper";
+	
 	public static final String ENV_SERVER_URL = "ONEDEV_SERVER_URL";
 	
 	public static final String ENV_JOB_TOKEN = "ONEDEV_JOB_TOKEN";
+	
+	public static final String ENV_OS_INFO = "ONEDEV_OS_INFO";
 	
 	public static final String BEARER = "Bearer";
 	
@@ -176,13 +183,33 @@ public class KubernetesHelper {
 		}
 	}
 	
+	public static String getVersion() {
+		try (InputStream is = KubernetesHelper.class.getClassLoader().getResourceAsStream("k8s-helper-version.properties")) {
+			ByteArrayOutputStream baos = new ByteArrayOutputStream();
+			IOUtils.copy(is, baos);
+			return baos.toString();
+		} catch (IOException e) {
+			throw new RuntimeException(e);
+		}
+	}
+
+	private static OsInfo getOsInfo() {
+		try {
+			return SerializationUtils.deserialize(Hex.decodeHex(System.getenv(ENV_OS_INFO).toCharArray()));
+		} catch (DecoderException e) {
+			throw new RuntimeException(e);
+		}
+	}
+	
 	private static void generateCommandScript(List<Integer> position, String stepNames, 
-			List<String> setupCommands, CommandExecutable commandExecutable, File workspace) {
+			List<String> setupCommands, CommandExecutable commandExecutable, File workspace, 
+			OsInfo osInfo) {
 		try {
 			String positionStr = stringifyPosition(position);
 			File commandHome = getCommandHome();
 			File stepScriptFile = new File(commandHome, "step-" + positionStr + commandExecutable.getScriptExtension());
-			FileUtils.writeLines(stepScriptFile, commandExecutable.getCommands(), commandExecutable.getEndOfLine());
+			OsExecution execution = commandExecutable.getExecution(osInfo);
+			FileUtils.writeLines(stepScriptFile, execution.getCommands(), commandExecutable.getEndOfLine());
 			
  			if (SystemUtils.IS_OS_WINDOWS) { 
 				StringBuilder escapedStepNames = new StringBuilder();
@@ -352,7 +379,7 @@ public class KubernetesHelper {
 	
 	public static void init(String serverUrl, String jobToken, boolean test) {
 		installJVMCert();
-		
+		OsInfo osInfo = getOsInfo();
 		Client client = ClientBuilder.newClient();
 		try {
 			File cacheHome = getCacheHome();
@@ -381,7 +408,7 @@ public class KubernetesHelper {
 					commands.add("@echo off");
 				commands.add("echo hello from container");
 				generateCommandScript(Lists.newArrayList(0), "test", Lists.newArrayList(), 
-						new CommandExecutable("any", commands, true), getWorkspace());
+						new CommandExecutable("any", commands, true), getWorkspace(), osInfo);
 			} else {
 				WebTarget target = client.target(serverUrl).path("api/k8s/job-data");
 				Invocation.Builder builder =  target.request();
@@ -470,8 +497,9 @@ public class KubernetesHelper {
 							commandExecutable = (CommandExecutable) executable;
 						} else if (executable instanceof ContainerExecutable) {
 							ContainerExecutable containerExecutable = (ContainerExecutable) executable;
-							if (containerExecutable.getWorkingDir() != null)
-								workingDir = new File(containerExecutable.getWorkingDir());
+							OsContainer container = containerExecutable.getContainer(osInfo);
+							if (container.getWorkingDir() != null)
+								workingDir = new File(container.getWorkingDir());
 							// We will inspect container image and populate appropriate commands in sidecar as 
 							// container images are not pulled at init stage
 							commandExecutable = new CommandExecutable("any", Lists.newArrayList(), true);
@@ -506,7 +534,7 @@ public class KubernetesHelper {
 							commandExecutable = new CommandExecutable("any", commands, true);
 						} 
 						
-						generateCommandScript(position, stepNames, setupCommands, commandExecutable, workingDir);
+						generateCommandScript(position, stepNames, setupCommands, commandExecutable, workingDir, osInfo);
 						
 						return null;
 					}
@@ -852,6 +880,8 @@ public class KubernetesHelper {
 	}
 	
 	public static void sidecar(String serverUrl, String jobToken, boolean test) {
+		OsInfo osInfo = getOsInfo();
+		
 		LeafHandler commandHandler = new LeafHandler() {
 
 			@Override
@@ -873,7 +903,8 @@ public class KubernetesHelper {
 					String stepScript = FileUtils.readFileToString(stepScriptFile, UTF_8);
 					if (executable instanceof ContainerExecutable) {
 						ContainerExecutable containerExecutable = (ContainerExecutable) executable;
-						stepScript = getContainerRunScript(containerExecutable.getImage(), containerExecutable.getArgs());
+						OsContainer container = containerExecutable.getContainer(osInfo);
+						stepScript = getContainerRunScript(container.getImage(), container.getArgs());
 					} else {
 						stepScript = FileUtils.readFileToString(stepScriptFile, UTF_8);
 					}
