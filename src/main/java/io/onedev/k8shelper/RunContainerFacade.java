@@ -9,7 +9,7 @@ import com.google.common.collect.Lists;
 
 import io.onedev.commons.utils.ExplicitException;
 
-public class ContainerExecutable extends LeafExecutable {
+public class RunContainerFacade extends LeafFacade {
 
 	private static final long serialVersionUID = 1L;
 
@@ -17,12 +17,12 @@ public class ContainerExecutable extends LeafExecutable {
 	
 	private final boolean useTTY;
 	
-	public ContainerExecutable(List<OsContainer> containers, boolean useTTY) {
+	public RunContainerFacade(List<OsContainer> containers, boolean useTTY) {
 		this.containers = containers;
 		this.useTTY = useTTY;
 	}
 
-	public ContainerExecutable(String image, @Nullable String args, Map<String, String> envMap, 
+	public RunContainerFacade(String image, @Nullable String args, Map<String, String> envMap, 
 			@Nullable String workingDir, boolean useTTY) {
 		this(Lists.newArrayList(new OsContainer(OsMatcher.ALL, image, args, envMap, workingDir)), useTTY);
 	}

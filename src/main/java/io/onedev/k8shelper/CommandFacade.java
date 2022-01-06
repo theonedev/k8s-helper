@@ -11,7 +11,7 @@ import com.google.common.collect.Lists;
 import io.onedev.commons.utils.ExplicitException;
 import io.onedev.commons.utils.command.Commandline;
 
-public class CommandExecutable extends LeafExecutable {
+public class CommandFacade extends LeafFacade {
 
 	private static final long serialVersionUID = 1L;
 
@@ -19,12 +19,12 @@ public class CommandExecutable extends LeafExecutable {
 	
 	private final boolean useTTY;
 	
-	public CommandExecutable(List<OsExecution> executions, boolean useTTY) {
+	public CommandFacade(List<OsExecution> executions, boolean useTTY) {
 		this.executions = executions;
 		this.useTTY = useTTY;
 	}
 
-	public CommandExecutable(@Nullable String image, List<String> commands, boolean useTTY) {
+	public CommandFacade(@Nullable String image, List<String> commands, boolean useTTY) {
 		this(Lists.newArrayList(new OsExecution(OsMatcher.ALL, image, commands)), useTTY);
 	}
 	

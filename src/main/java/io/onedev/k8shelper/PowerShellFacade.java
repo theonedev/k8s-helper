@@ -6,26 +6,26 @@ import javax.annotation.Nullable;
 
 import io.onedev.commons.utils.command.Commandline;
 
-public class BashExecutable extends CommandExecutable {
+public class PowerShellFacade extends CommandFacade {
 
 	private static final long serialVersionUID = 1L;
 
-	public BashExecutable(@Nullable String image, List<String> commands, boolean useTTY) {
+	public PowerShellFacade(@Nullable String image, List<String> commands, boolean useTTY) {
 		super(image, commands, useTTY);
 	}
 
 	@Override
 	public Commandline getInterpreter() {
-		return new Commandline("bash");
+		return new Commandline("powershell").addArgs("-executionpolicy", "remotesigned", "-file");
 	}
 
 	@Override
 	public String getScriptExtension() {
-		return ".sh";
+		return ".ps1";
 	}
-
+	
 	public String getEndOfLine() {
-		return "\n";
+		return "\r\n";
 	}
 	
 }

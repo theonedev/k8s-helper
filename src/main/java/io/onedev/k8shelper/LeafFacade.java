@@ -2,7 +2,7 @@ package io.onedev.k8shelper;
 
 import java.util.List;
 
-public abstract class LeafExecutable implements Executable {
+public abstract class LeafFacade implements StepFacade {
 
 	private static final long serialVersionUID = 1L;
 

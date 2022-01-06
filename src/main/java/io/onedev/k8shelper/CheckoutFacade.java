@@ -1,6 +1,6 @@
 package io.onedev.k8shelper;
 
-public class CheckoutExecutable extends LeafExecutable {
+public class CheckoutFacade extends LeafFacade {
 
 	private static final long serialVersionUID = 1L;
 
@@ -12,7 +12,7 @@ public class CheckoutExecutable extends LeafExecutable {
 	
 	private final CloneInfo cloneInfo;
 	
-	public CheckoutExecutable(int cloneDepth, boolean withLfs, boolean withSubmodules, CloneInfo cloneInfo) {
+	public CheckoutFacade(int cloneDepth, boolean withLfs, boolean withSubmodules, CloneInfo cloneInfo) {
 		this.cloneDepth = cloneDepth;
 		this.withLfs = withLfs;
 		this.withSubmodules = withSubmodules;

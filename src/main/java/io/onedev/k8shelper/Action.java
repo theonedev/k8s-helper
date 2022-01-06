@@ -10,9 +10,9 @@ public class Action implements Serializable {
 	
 	private final ExecuteCondition condition;
 	
-	private final Executable executable;
+	private final StepFacade executable;
 	
-	public Action(String name, Executable executable, ExecuteCondition condition) {
+	public Action(String name, StepFacade executable, ExecuteCondition condition) {
 		this.name = name;
 		this.executable = executable;
 		this.condition = condition;
@@ -22,7 +22,7 @@ public class Action implements Serializable {
 		return name;
 	}
 
-	public Executable getExecutable() {
+	public StepFacade getExecutable() {
 		return executable;
 	}
 

@@ -7,9 +7,9 @@ import com.google.common.base.Preconditions;
 
 import io.onedev.commons.utils.TaskLogger;
 
-public class RunServerStep {
+public class RunServerSideStep {
 
-	private static final Logger logger = LoggerFactory.getLogger(RunServerStep.class);
+	private static final Logger logger = LoggerFactory.getLogger(RunServerSideStep.class);
 	
 	public static void main(String[] args) {
 		int exitCode = 0;

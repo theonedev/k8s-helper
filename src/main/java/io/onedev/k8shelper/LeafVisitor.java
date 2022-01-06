@@ -4,6 +4,6 @@ import java.util.List;
 
 public interface LeafVisitor<T> {
 
-	T visit(LeafExecutable executable, List<Integer> position);
+	T visit(LeafFacade executable, List<Integer> position);
 	
 }

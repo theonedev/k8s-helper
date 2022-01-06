@@ -4,8 +4,8 @@ import java.util.List;
 
 public interface LeafHandler {
 
-	boolean execute(LeafExecutable executable, List<Integer> position);
+	boolean execute(LeafFacade executable, List<Integer> position);
 	
-	void skip(LeafExecutable executable, List<Integer> position);
+	void skip(LeafFacade executable, List<Integer> position);
 	
 }

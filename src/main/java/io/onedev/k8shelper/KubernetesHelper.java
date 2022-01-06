@@ -74,6 +74,8 @@ public class KubernetesHelper {
 	
 	public static final String ENV_OS_INFO = "ONEDEV_OS_INFO";
 	
+	public static final String ENV_REGISTRY_LOGINS = "ONEDEV_REGISTRY_LOGINS";
+	
 	public static final String BEARER = "Bearer";
 	
 	public static final String LOG_END_MESSAGE = "===== End of OneDev K8s Helper Log =====";
@@ -202,14 +204,14 @@ public class KubernetesHelper {
 	}
 	
 	private static void generateCommandScript(List<Integer> position, String stepNames, 
-			List<String> setupCommands, CommandExecutable commandExecutable, File workspace, 
+			List<String> setupCommands, CommandFacade commandFacade, File workspace, 
 			OsInfo osInfo) {
 		try {
 			String positionStr = stringifyPosition(position);
 			File commandHome = getCommandHome();
-			File stepScriptFile = new File(commandHome, "step-" + positionStr + commandExecutable.getScriptExtension());
-			OsExecution execution = commandExecutable.getExecution(osInfo);
-			FileUtils.writeLines(stepScriptFile, execution.getCommands(), commandExecutable.getEndOfLine());
+			File stepScriptFile = new File(commandHome, "step-" + positionStr + commandFacade.getScriptExtension());
+			OsExecution execution = commandFacade.getExecution(osInfo);
+			FileUtils.writeLines(stepScriptFile, execution.getCommands(), commandFacade.getEndOfLine());
 			
  			if (SystemUtils.IS_OS_WINDOWS) { 
 				StringBuilder escapedStepNames = new StringBuilder();
@@ -243,7 +245,7 @@ public class KubernetesHelper {
 						"cd " + workspace.getAbsolutePath() 
 								+ " && cmd /c " + setupScriptFile.getAbsolutePath()
 								+ " && cmd /c echo " + TaskLogger.wrapWithAnsiNotice("Running step ^\"" + escapedStepNames + "^\"...")
-								+ " && " + commandExecutable.getInterpreter() + " " + stepScriptFile.getAbsolutePath(), 
+								+ " && " + commandFacade.getInterpreter() + " " + stepScriptFile.getAbsolutePath(), 
 						"set exit_code=%errorlevel%",
 						"if \"%exit_code%\"==\"0\" (",
 						"	echo " + TaskLogger.wrapWithAnsiSuccess("Step ^\"" + escapedStepNames + "^\" is successful"),
@@ -284,7 +286,7 @@ public class KubernetesHelper {
 						"cd " + workspace.getAbsolutePath() 
 								+ " && sh " + setupScriptFile.getAbsolutePath()
 								+ " && echo '" + TaskLogger.wrapWithAnsiNotice("Running step \"" + escapedStepNames + "\"...") + "'" 
-								+ " && " + commandExecutable.getInterpreter() + " " + stepScriptFile.getAbsolutePath(), 
+								+ " && " + commandFacade.getInterpreter() + " " + stepScriptFile.getAbsolutePath(), 
 						"exitCode=\"$?\"", 
 						"if [ $exitCode -eq 0 ]",
 						"then",
@@ -408,7 +410,7 @@ public class KubernetesHelper {
 					commands.add("@echo off");
 				commands.add("echo hello from container");
 				generateCommandScript(Lists.newArrayList(0), "test", Lists.newArrayList(), 
-						new CommandExecutable("any", commands, true), getWorkspace(), osInfo);
+						new CommandFacade("any", commands, true), getWorkspace(), osInfo);
 			} else {
 				WebTarget target = client.target(serverUrl).path("api/k8s/job-data");
 				Invocation.Builder builder =  target.request();
@@ -453,12 +455,12 @@ public class KubernetesHelper {
 				
 				logger.info("Generating command scripts...");
 				
-				CompositeExecutable entryExecutable = new CompositeExecutable(jobData.getActions());
-				entryExecutable.traverse(new LeafVisitor<Void>() {
+				CompositeFacade entryFacade = new CompositeFacade(jobData.getActions());
+				entryFacade.traverse(new LeafVisitor<Void>() {
 
 					@Override
-					public Void visit(LeafExecutable executable, List<Integer> position) {
-						String stepNames = entryExecutable.getNamesAsString(position);
+					public Void visit(LeafFacade facade, List<Integer> position) {
+						String stepNames = entryFacade.getNamesAsString(position);
 
 						List<String> setupCommands = new ArrayList<>();
 						if (SystemUtils.IS_OS_WINDOWS) { 
@@ -492,17 +494,88 @@ public class KubernetesHelper {
 						String positionStr = stringifyPosition(position);
 
 						File workingDir = getWorkspace();
-						CommandExecutable commandExecutable;
-						if (executable instanceof CommandExecutable) {
-							commandExecutable = (CommandExecutable) executable;
-						} else if (executable instanceof ContainerExecutable) {
-							ContainerExecutable containerExecutable = (ContainerExecutable) executable;
-							OsContainer container = containerExecutable.getContainer(osInfo);
+						CommandFacade commandFacade;
+						if (facade instanceof CommandFacade) {
+							commandFacade = (CommandFacade) facade;
+						} else if (facade instanceof BuildImageFacade) {
+							BuildImageFacade buildImageFacade = (BuildImageFacade) facade;
+							
+							List<String> commands = new ArrayList<>();
+							
+							StringBuilder buildCommand = new StringBuilder("docker build ");
+							
+							String[] parsedTags = StringUtils.parseQuoteTokens(buildImageFacade.getTags());
+							for (String tag: parsedTags) 
+								buildCommand.append("-t ").append(tag).append(" ");
+							
+							List<String> loginCommands = new ArrayList<>();
+							try {
+								List<RegistryLoginFacade> registryLogins = SerializationUtils.deserialize(
+										Hex.decodeHex(System.getenv(ENV_REGISTRY_LOGINS).toCharArray()));
+								for (RegistryLoginFacade login: registryLogins) {
+									StringBuilder loginCommand = new StringBuilder("echo ");
+									loginCommand.append(login.getPassword()).append("|docker login -u ");
+									loginCommand.append(login.getUserName()).append(" --password-stdin || exit /b 1");
+									if (login.getRegistryUrl() != null)
+										loginCommand.append(" ").append(login.getRegistryUrl());
+									loginCommands.add(loginCommand.toString());
+								}
+							} catch (DecoderException e) {
+								throw new RuntimeException(e);
+							}
+							
+							if (SystemUtils.IS_OS_WINDOWS) {
+								if (buildImageFacade.getDockerfile() != null)
+									buildCommand.append("-f ").append("%workspace%\\" + buildImageFacade.getDockerfile().replace('/', '\\'));
+								else
+									buildCommand.append("-f ").append("%workspace%\\Dockerfile");
+								
+								buildCommand.append(" ");
+								
+								if (buildImageFacade.getBuildPath() != null)
+									buildCommand.append("%workspace%\\" + buildImageFacade.getBuildPath().replace('/', '\\'));
+								else
+									buildCommand.append("%workspace%");
+								
+								buildCommand.append(" || exit /b 1");
+								
+								commands.add("@echo off");
+								commands.addAll(loginCommands);
+								commands.add("set workspace=%cd%");
+							} else {
+								if (buildImageFacade.getDockerfile() != null)
+									buildCommand.append("-f ").append("$workspace/" + buildImageFacade.getDockerfile());
+								else
+									buildCommand.append("-f ").append("$workspace/Dockerfile");
+								
+								buildCommand.append(" ");
+								
+								if (buildImageFacade.getBuildPath() != null)
+									buildCommand.append("$workspace/" + buildImageFacade.getBuildPath());
+								else
+									buildCommand.append("$workspace");
+								
+								commands.add("set -e");
+								commands.addAll(loginCommands);
+								commands.add("workspace=$(pwd)");
+							}
+							
+							commands.add(buildCommand.toString());
+							
+							if (buildImageFacade.isPublish()) {
+								for (String tag: parsedTags)  
+									commands.add("docker push " + tag);
+							}
+							
+							commandFacade = new CommandFacade("any", commands, true);
+						} else if (facade instanceof RunContainerFacade) {
+							RunContainerFacade containerFacade = (RunContainerFacade) facade;
+							OsContainer container = containerFacade.getContainer(osInfo);
 							if (container.getWorkingDir() != null)
 								workingDir = new File(container.getWorkingDir());
 							// We will inspect container image and populate appropriate commands in sidecar as 
 							// container images are not pulled at init stage
-							commandExecutable = new CommandExecutable("any", Lists.newArrayList(), true);
+							commandFacade = new CommandFacade("any", Lists.newArrayList(), true);
 						} else {
 							String command;
 							String classPath;
@@ -510,19 +583,19 @@ public class KubernetesHelper {
 								classPath = "C:\\k8s-helper\\*";
 							else 
 								classPath = "/k8s-helper/*";
-							if (executable instanceof CheckoutExecutable) {
-								CheckoutExecutable checkoutExecutable = (CheckoutExecutable) executable;
-								checkoutExecutable.getCloneInfo();
+							if (facade instanceof CheckoutFacade) {
+								CheckoutFacade checkoutFacade = (CheckoutFacade) facade;
+								checkoutFacade.getCloneInfo();
 								command = String.format("java -classpath \"%s\" io.onedev.k8shelper.CheckoutCode %s %b %b %d %s", 
-										classPath, positionStr, checkoutExecutable.isWithLfs(), checkoutExecutable.isWithSubmodules(), 
-										checkoutExecutable.getCloneDepth(), checkoutExecutable.getCloneInfo().toString());
+										classPath, positionStr, checkoutFacade.isWithLfs(), checkoutFacade.isWithSubmodules(), 
+										checkoutFacade.getCloneDepth(), checkoutFacade.getCloneInfo().toString());
 							} else {
-								ServerExecutable serverExecutable = (ServerExecutable) executable;
+								ServerSideFacade serverSideFacade = (ServerSideFacade) facade;
 								
-								String includeFiles = encodeAsCommandArg(serverExecutable.getIncludeFiles());
-								String excludeFiles = encodeAsCommandArg(serverExecutable.getExcludeFiles());
-								String placeholders = encodeAsCommandArg(serverExecutable.getPlaceholders());
-								command = String.format("java -classpath \"%s\" io.onedev.k8shelper.RunServerStep %s %s %s %s", 
+								String includeFiles = encodeAsCommandArg(serverSideFacade.getIncludeFiles());
+								String excludeFiles = encodeAsCommandArg(serverSideFacade.getExcludeFiles());
+								String placeholders = encodeAsCommandArg(serverSideFacade.getPlaceholders());
+								command = String.format("java -classpath \"%s\" io.onedev.k8shelper.RunServerSideStep %s %s %s %s", 
 										classPath, positionStr, includeFiles, excludeFiles, placeholders);
 							}							
 							
@@ -531,10 +604,10 @@ public class KubernetesHelper {
 								commands.add("@echo off");
 							commands.add(command);
 							
-							commandExecutable = new CommandExecutable("any", commands, true);
+							commandFacade = new CommandFacade("any", commands, true);
 						} 
 						
-						generateCommandScript(position, stepNames, setupCommands, commandExecutable, workingDir, osInfo);
+						generateCommandScript(position, stepNames, setupCommands, commandFacade, workingDir, osInfo);
 						
 						return null;
 					}
@@ -885,7 +958,7 @@ public class KubernetesHelper {
 		LeafHandler commandHandler = new LeafHandler() {
 
 			@Override
-			public boolean execute(LeafExecutable executable, List<Integer> position) {
+			public boolean execute(LeafFacade facade, List<Integer> position) {
 				String positionStr = stringifyPosition(position);
 				
 				File file;
@@ -901,9 +974,9 @@ public class KubernetesHelper {
 
 				try {
 					String stepScript = FileUtils.readFileToString(stepScriptFile, UTF_8);
-					if (executable instanceof ContainerExecutable) {
-						ContainerExecutable containerExecutable = (ContainerExecutable) executable;
-						OsContainer container = containerExecutable.getContainer(osInfo);
+					if (facade instanceof RunContainerFacade) {
+						RunContainerFacade rubContainerFacade = (RunContainerFacade) facade;
+						OsContainer container = rubContainerFacade.getContainer(osInfo);
 						stepScript = getContainerRunScript(container.getImage(), container.getArgs());
 					} else {
 						stepScript = FileUtils.readFileToString(stepScriptFile, UTF_8);
@@ -945,7 +1018,7 @@ public class KubernetesHelper {
 			}
 
 			@Override
-			public void skip(LeafExecutable executable, List<Integer> position) {
+			public void skip(LeafFacade facade, List<Integer> position) {
 				File file = new File(getMarkHome(), stringifyPosition(position) + ".skip");
 				try {
 					if (!file.createNewFile()) 
@@ -958,15 +1031,15 @@ public class KubernetesHelper {
 		};
 		
 		if (test) {
-			CommandExecutable executable = new CommandExecutable(
+			CommandFacade facade = new CommandFacade(
 					"this does not matter", Lists.newArrayList("this does not matter"), false);
-			executable.execute(commandHandler, Lists.newArrayList(0));
+			facade.execute(commandHandler, Lists.newArrayList(0));
 		} else {
 			JobData jobData = readJobData();
 			
 			List<Action> actions = jobData.getActions();
 			
-			new CompositeExecutable(actions).execute(commandHandler, new ArrayList<>());
+			new CompositeFacade(actions).execute(commandHandler, new ArrayList<>());
 		} 
 	}
 	
@@ -1076,11 +1149,11 @@ public class KubernetesHelper {
 			}
 			
 		};
-		runServerStep(serverUrl, jobToken, position, includeFiles, excludeFiles, placeholders, 
+		runServerSideStep(serverUrl, jobToken, position, includeFiles, excludeFiles, placeholders, 
 				getBuildHome(), getWorkspace(), logger);
 	}
 
-	public static void runServerStep(String serverUrl, String jobToken, List<Integer> position, 
+	public static void runServerSideStep(String serverUrl, String jobToken, List<Integer> position, 
 			Collection<String> includeFiles, Collection<String> excludeFiles, 
 			Collection<String> placeholders, File buildHome, File workspace, TaskLogger logger) {
 		Client client = ClientBuilder.newClient();

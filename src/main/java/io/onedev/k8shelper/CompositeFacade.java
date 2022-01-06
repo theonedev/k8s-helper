@@ -8,13 +8,13 @@ import com.google.common.base.Preconditions;
 
 import static io.onedev.k8shelper.ExecuteCondition.*;
 
-public class CompositeExecutable implements Executable {
+public class CompositeFacade implements StepFacade {
 
 	private static final long serialVersionUID = 1L;
 
 	private final List<Action> actions;
 	
-	public CompositeExecutable(List<Action> actions) {
+	public CompositeFacade(List<Action> actions) {
 		this.actions = actions;
 	}
 
@@ -69,7 +69,7 @@ public class CompositeExecutable implements Executable {
 		Action action = actions.get(positionCopy.remove(0));
 		names.add(action.getName());
 		if (!positionCopy.isEmpty()) {
-			CompositeExecutable executable = (CompositeExecutable) action.getExecutable();
+			CompositeFacade executable = (CompositeFacade) action.getExecutable();
 			names.addAll(executable.getNames(positionCopy));
 		}
 		return names;

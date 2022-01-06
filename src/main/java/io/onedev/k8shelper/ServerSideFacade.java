@@ -3,7 +3,7 @@ package io.onedev.k8shelper;
 import java.util.Collection;
 import java.util.Set;
 
-public class ServerExecutable extends LeafExecutable {
+public class ServerSideFacade extends LeafFacade {
 
 	private static final long serialVersionUID = 1L;
 
@@ -15,7 +15,8 @@ public class ServerExecutable extends LeafExecutable {
 	
 	private final Collection<String> placeholders;
 	
-	public ServerExecutable(Object step, Set<String> includeFiles, Set<String> excludeFiles, Collection<String> placeholders) {
+	public ServerSideFacade(Object step, Set<String> includeFiles, Set<String> excludeFiles, 
+			Collection<String> placeholders) {
 		this.step = step;
 		this.includeFiles = includeFiles;
 		this.excludeFiles = excludeFiles;
