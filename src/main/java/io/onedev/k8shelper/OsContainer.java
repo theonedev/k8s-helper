@@ -18,14 +18,18 @@ public class OsContainer implements Serializable {
 	private final Map<String, String> envMap;
 	
 	private final String workingDir;
+	
+	private final Map<String, String> volumeMounts;
 
 	public OsContainer(OsMatcher osMatcher, String image, @Nullable String args, 
-			Map<String, String> envMap, @Nullable String workingDir) {
+			Map<String, String> envMap, @Nullable String workingDir, 
+			Map<String, String> volumeMounts) {
 		this.osMatcher = osMatcher;
 		this.image = image;
 		this.args = args;
 		this.envMap = envMap;
 		this.workingDir = workingDir;
+		this.volumeMounts = volumeMounts;
 	}
 
 	public OsMatcher getOsMatcher() {
@@ -46,6 +50,10 @@ public class OsContainer implements Serializable {
 
 	public String getWorkingDir() {
 		return workingDir;
+	}
+
+	public Map<String, String> getVolumeMounts() {
+		return volumeMounts;
 	}
 
 }

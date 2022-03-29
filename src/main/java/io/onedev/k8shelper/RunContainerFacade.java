@@ -23,8 +23,8 @@ public class RunContainerFacade extends LeafFacade {
 	}
 
 	public RunContainerFacade(String image, @Nullable String args, Map<String, String> envMap, 
-			@Nullable String workingDir, boolean useTTY) {
-		this(Lists.newArrayList(new OsContainer(OsMatcher.ALL, image, args, envMap, workingDir)), useTTY);
+			@Nullable String workingDir, Map<String, String> volumeMounts, boolean useTTY) {
+		this(Lists.newArrayList(new OsContainer(OsMatcher.ALL, image, args, envMap, workingDir, volumeMounts)), useTTY);
 	}
 	
 	public List<OsContainer> getContainers() {
