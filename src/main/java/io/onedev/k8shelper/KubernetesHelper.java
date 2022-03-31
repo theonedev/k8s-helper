@@ -11,6 +11,7 @@ import java.io.OutputStream;
 import java.io.StringReader;
 import java.nio.ByteBuffer;
 import java.nio.charset.Charset;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Base64;
@@ -585,10 +586,11 @@ public class KubernetesHelper {
 								classPath = "/k8s-helper/*";
 							if (facade instanceof CheckoutFacade) {
 								CheckoutFacade checkoutFacade = (CheckoutFacade) facade;
-								checkoutFacade.getCloneInfo();
 								command = String.format("java -classpath \"%s\" io.onedev.k8shelper.CheckoutCode %s %b %b %d %s", 
 										classPath, positionStr, checkoutFacade.isWithLfs(), checkoutFacade.isWithSubmodules(), 
 										checkoutFacade.getCloneDepth(), checkoutFacade.getCloneInfo().toString());
+								if (checkoutFacade.getCheckoutPath() != null)
+									command += " " + Hex.encodeHexString(checkoutFacade.getCheckoutPath().getBytes(StandardCharsets.UTF_8));
 							} else {
 								ServerSideFacade serverSideFacade = (ServerSideFacade) facade;
 								
@@ -706,8 +708,21 @@ public class KubernetesHelper {
 			}
 			
 		});
-		if (!originExists.get())
-			result.checkReturnCode();
+		
+		if (originExists.get()) {
+			git.clearArgs();
+			git.addArgs("remote", "set-url", "origin", remoteUrl);
+			result = git.execute(infoLogger, new LineConsumer() {
+
+				@Override
+				public void consume(String line) {
+					errorLogger.consume(line);
+				}
+				
+			});
+		}
+		
+		result.checkReturnCode();
 		
 		if (withLfs) {
 			if (SystemUtils.IS_OS_MAC_OSX) {
@@ -1088,7 +1103,8 @@ public class KubernetesHelper {
 	}
 	
 	public static void checkoutCode(String serverUrl, String jobToken, String positionStr, 
-			boolean withLfs, boolean withSubmodules, int cloneDepth, CloneInfo cloneInfo) throws IOException {
+			boolean withLfs, boolean withSubmodules, int cloneDepth, CloneInfo cloneInfo, 
+			@Nullable String checkoutPath) throws IOException {
 		JobData jobData = readJobData();
 		
 		logger.info("Checking out code from {}...", cloneInfo.getCloneUrl());
@@ -1103,7 +1119,13 @@ public class KubernetesHelper {
 			userHome = new File("/root");
 		
 		File workspace = getWorkspace();
-		Commandline git = new Commandline("git").workingDir(workspace);
+		Commandline git = new Commandline("git");
+		if (checkoutPath != null) {
+			git.workingDir(new File(workspace, checkoutPath));
+			FileUtils.createDir(git.workingDir());
+		} else {
+			git.workingDir(workspace);
+		}
 		
 		cloneInfo.writeAuthData(userHome, git, infoLogger, errorLogger);
 
