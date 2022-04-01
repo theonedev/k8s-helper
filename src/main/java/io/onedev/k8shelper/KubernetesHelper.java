@@ -4,7 +4,6 @@ import static java.nio.charset.StandardCharsets.UTF_8;
 
 import java.io.ByteArrayOutputStream;
 import java.io.File;
-import java.io.FileFilter;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
@@ -16,14 +15,11 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Base64;
 import java.util.Collection;
-import java.util.Date;
 import java.util.HashMap;
 import java.util.HashSet;
-import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.function.Consumer;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
@@ -58,7 +54,6 @@ import com.google.common.collect.Lists;
 import io.onedev.commons.utils.ExceptionUtils;
 import io.onedev.commons.utils.ExplicitException;
 import io.onedev.commons.utils.FileUtils;
-import io.onedev.commons.utils.PathUtils;
 import io.onedev.commons.utils.StringUtils;
 import io.onedev.commons.utils.TaskLogger;
 import io.onedev.commons.utils.command.Commandline;
@@ -137,53 +132,6 @@ public class KubernetesHelper {
 	
 	private static File getMarkHome() {
 		return new File(getBuildHome(), "mark");
-	}
-	
-	public static Map<CacheInstance, Date> getCacheInstances(File cacheHome) {
-		Map<CacheInstance, Date> instances = new HashMap<>();
-		
-		FileFilter dirFilter = new FileFilter() {
-
-			@Override
-			public boolean accept(File pathname) {
-				return pathname.isDirectory();
-			}
-			
-		}; 
-		for (File keyDir: cacheHome.listFiles(dirFilter)) {
-			for (File instanceDir: keyDir.listFiles(dirFilter)) 
-				instances.put(
-						new CacheInstance(instanceDir.getName(), keyDir.getName()), 
-						new Date(instanceDir.lastModified()));
-		}
-		
-		return instances;
-	}
-	
-	public static void checkCacheAllocations(File cacheHome, Map<CacheInstance, String> cacheAllocations, Consumer<File> cacheCleaner) {
-		for (Iterator<Map.Entry<CacheInstance, String>> it = cacheAllocations.entrySet().iterator(); it.hasNext();) {
-			Map.Entry<CacheInstance, String> entry = it.next();
-			File cacheDirectory = entry.getKey().getDirectory(cacheHome);
-			if (entry.getValue() != null) {
-				if (!cacheDirectory.exists())
-					FileUtils.createDir(cacheDirectory);
-				File tempFile = null;
-				try {
-					tempFile = File.createTempFile("update-cache-last-modified", null, cacheDirectory);
-				} catch (IOException e) {
-					throw new RuntimeException(e);
-				} finally {
-					if (tempFile != null)
-						tempFile.delete();
-				}
-			} else {
-				if (cacheDirectory.exists()) {
-					cacheCleaner.accept(cacheDirectory);
-					FileUtils.deleteDir(cacheDirectory);
-				}
-				it.remove();
-			}
-		}
 	}
 	
 	public static String getVersion() {
@@ -432,27 +380,34 @@ public class KubernetesHelper {
 				
 				File workspace = getWorkspace();
 				
-				logger.info("Allocating job caches from {}...", serverUrl);
-				target = client.target(serverUrl).path("api/k8s/allocate-job-caches");
-				builder =  target.request();
-				builder.header(HttpHeaders.AUTHORIZATION, BEARER + " " + jobToken);
-				Map<CacheInstance, String> cacheAllocations;
-				try (Response response = builder.post(Entity.entity(
-						new CacheAllocationRequest(new Date(), getCacheInstances(cacheHome)).toString(),
-						MediaType.APPLICATION_OCTET_STREAM))) {
-					checkStatus(response);
-					cacheAllocations = SerializationUtils.deserialize(response.readEntity(byte[].class));
-				}
+				logger.info("Setting up job cache...");
 				
-				checkCacheAllocations(cacheHome, cacheAllocations, new Consumer<File>() {
+				JobCache cache = new JobCache(cacheHome) {
 
 					@Override
-					public void accept(File dir) {
-						FileUtils.cleanDir(dir);
+					protected Map<CacheInstance, String> allocate(CacheAllocationRequest request) {
+						WebTarget target = client.target(serverUrl).path("api/k8s/allocate-job-caches");
+						Invocation.Builder builder =  target.request();
+						builder.header(HttpHeaders.AUTHORIZATION, BEARER + " " + jobToken);
+						try (Response response = builder.post(Entity.entity(request.toString(),
+								MediaType.APPLICATION_OCTET_STREAM))) {
+							checkStatus(response);
+							return SerializationUtils.deserialize(response.readEntity(byte[].class));
+						}
+					}
+
+					@Override
+					protected void clean(File cacheDir) {
+						FileUtils.cleanDir(cacheDir);						
 					}
 					
-				});
+				};
+				cache.init(false);
+				
 				FileUtils.createDir(workspace);
+				
+				// workspace is shared for all containers, and we only need to setup cache once
+				cache.installSymbolinks(workspace);
 				
 				logger.info("Generating command scripts...");
 				
@@ -471,24 +426,21 @@ public class KubernetesHelper {
 							setupCommands.add("cp -r -f -p /root/auth-info/. /root");
 						}
 						
-						for (Map.Entry<CacheInstance, String> entry: cacheAllocations.entrySet()) {
-							if (!PathUtils.isCurrent(entry.getValue())) {
-								String link = PathUtils.resolve(workspace.getAbsolutePath(), entry.getValue()); 
+						for (Map.Entry<CacheInstance, String> entry: cache.getAllocations().entrySet()) {
+							String link = entry.getValue();
+							// absolute path cache is local to each container, and we should set up for each container
+							if (new File(link).isAbsolute()) {
 								File linkTarget = entry.getKey().getDirectory(cacheHome);
 								// create possible missing parent directories
 								if (SystemUtils.IS_OS_WINDOWS) { 
-									setupCommands.add(String.format("echo Setting up cache \"%s\"...", link));							
 									setupCommands.add(String.format("if not exist \"%s\" mkdir \"%s\"", link, link)); 
 									setupCommands.add(String.format("rmdir /q /s \"%s\"", link));							
 									setupCommands.add(String.format("mklink /D \"%s\" \"%s\"", link, linkTarget.getAbsolutePath()));
 								} else {
-									setupCommands.add(String.format("echo Setting up cache \"%s\"...", link));							
 									setupCommands.add(String.format("mkdir -p \"%s\"", link)); 
 									setupCommands.add(String.format("rm -rf \"%s\"", link));
 									setupCommands.add(String.format("ln -s \"%s\" \"%s\"", linkTarget.getAbsolutePath(), link));
 								}
-							} else {
-								throw new ExplicitException("Invalid cache path: " + entry.getValue());
 							}
 						}
 						

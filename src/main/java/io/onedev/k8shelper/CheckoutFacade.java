@@ -1,12 +1,10 @@
 package io.onedev.k8shelper;
 
 import java.io.File;
-import java.util.Map;
 
 import javax.annotation.Nullable;
 
 import io.onedev.commons.utils.FileUtils;
-import io.onedev.commons.utils.PathUtils;
 import io.onedev.commons.utils.command.Commandline;
 
 public class CheckoutFacade extends LeafFacade {
@@ -52,28 +50,13 @@ public class CheckoutFacade extends LeafFacade {
 		return checkoutPath;
 	}
 
-	private File getCachedRelative(File cacheHome, Map<CacheInstance, String> cacheAllocations, String relativePath) {
-		for (Map.Entry<CacheInstance, String> entry: cacheAllocations.entrySet()) {
-			if (!new File(entry.getValue()).isAbsolute()) {
-				String relativeToCache = PathUtils.parseRelative(relativePath, entry.getValue());
-				if (relativeToCache != null)
-					return new File(entry.getKey().getDirectory(cacheHome), relativeToCache);
-			}
-		}
-		return null;
-	}
-	
-	public void setupWorkingDir(Commandline git, File workspace, File cacheHome, Map<CacheInstance, String> cacheAllocations) {
+	public void setupWorkingDir(Commandline git, File workspace) {
 		if (getCheckoutPath() != null) {
-			File cached = getCachedRelative(cacheHome, cacheAllocations, getCheckoutPath());
-			if (cached != null)
-				git.workingDir(cached);
-			else
-				git.workingDir(new File(workspace, getCheckoutPath()));
+			git.workingDir(new File(workspace, getCheckoutPath()));
 			FileUtils.createDir(git.workingDir());
 		} else {
 			git.workingDir(workspace);
 		}
-		
 	}
+	
 }
