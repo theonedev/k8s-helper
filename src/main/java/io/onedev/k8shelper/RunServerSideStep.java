@@ -21,7 +21,10 @@ public class RunServerSideStep {
 			if (jobToken == null)
 				throw new RuntimeException("Environment '" + KubernetesHelper.ENV_JOB_TOKEN + "' is not defined");
 
-			KubernetesHelper.runServerStep(serverUrl, jobToken, args[0], args[1], args[2], args[3]);
+			if (args.length >= 5)
+				KubernetesHelper.runServerStep(serverUrl, jobToken, args[0], args[1], args[2], args[3], args[4]);
+			else
+				KubernetesHelper.runServerStep(serverUrl, jobToken, args[0], args[1], args[2], args[3], null);
 		} catch (Exception e) {
 			logger.error(TaskLogger.wrapWithAnsiError(TaskLogger.toString(null, e)));
 			exitCode = 1;

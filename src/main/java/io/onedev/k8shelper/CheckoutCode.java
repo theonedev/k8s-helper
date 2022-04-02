@@ -1,8 +1,8 @@
 package io.onedev.k8shelper;
 
 import java.nio.charset.StandardCharsets;
+import java.util.Base64;
 
-import org.apache.commons.codec.binary.Hex;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -24,7 +24,7 @@ public class CheckoutCode {
 
 			String checkoutPath = null;
 			if (args.length >= 6) 
-				checkoutPath = new String(Hex.decodeHex(args[5].toCharArray()), StandardCharsets.UTF_8);
+				checkoutPath = new String(Base64.getDecoder().decode(args[5]), StandardCharsets.UTF_8);
 			KubernetesHelper.checkoutCode(serverUrl, jobToken, args[0], Boolean.parseBoolean(args[1]), 
 					Boolean.parseBoolean(args[2]), Integer.parseInt(args[3]), CloneInfo.fromString(args[4]), 
 					checkoutPath);

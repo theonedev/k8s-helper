@@ -541,8 +541,10 @@ public class KubernetesHelper {
 								command = String.format("java -classpath \"%s\" io.onedev.k8shelper.CheckoutCode %s %b %b %d %s", 
 										classPath, positionStr, checkoutFacade.isWithLfs(), checkoutFacade.isWithSubmodules(), 
 										checkoutFacade.getCloneDepth(), checkoutFacade.getCloneInfo().toString());
-								if (checkoutFacade.getCheckoutPath() != null)
-									command += " " + Hex.encodeHexString(checkoutFacade.getCheckoutPath().getBytes(StandardCharsets.UTF_8));
+								if (checkoutFacade.getCheckoutPath() != null) {
+									byte[] bytes = checkoutFacade.getCheckoutPath().getBytes(StandardCharsets.UTF_8);
+									command += " " + Base64.getEncoder().encodeToString(bytes);
+								}
 							} else {
 								ServerSideFacade serverSideFacade = (ServerSideFacade) facade;
 								
@@ -551,6 +553,10 @@ public class KubernetesHelper {
 								String placeholders = encodeAsCommandArg(serverSideFacade.getPlaceholders());
 								command = String.format("java -classpath \"%s\" io.onedev.k8shelper.RunServerSideStep %s %s %s %s", 
 										classPath, positionStr, includeFiles, excludeFiles, placeholders);
+								if (serverSideFacade.getSourcePath() != null) {
+									byte[] bytes = serverSideFacade.getSourcePath().getBytes(StandardCharsets.UTF_8);
+									command += " " + Base64.getEncoder().encodeToString(bytes);
+								}
 							}							
 							
 							List<String> commands = new ArrayList<>();
@@ -1107,10 +1113,16 @@ public class KubernetesHelper {
 	}
 	
 	public static void runServerStep(String serverUrl, String jobToken, String positionStr, 
-			String encodedIncludeFiles, String encodedExcludeFiles, String encodedPlaceholders) {
+			String encodedIncludeFiles, String encodedExcludeFiles, String encodedPlaceholders, 
+			@Nullable String encodedSourcePath) {
 		installJVMCert();
 
 		List<Integer> position = parsePosition(positionStr);
+		String sourcePath = null;
+		if (encodedSourcePath != null) {
+			sourcePath = new String(Base64.getDecoder().decode(
+					encodedSourcePath.getBytes(StandardCharsets.UTF_8)), StandardCharsets.UTF_8);
+		}
 		Collection<String> includeFiles = decodeCommandArgAsCollection(encodedIncludeFiles);
 		Collection<String> excludeFiles = decodeCommandArgAsCollection(encodedExcludeFiles);
 		Collection<String> placeholders = decodeCommandArgAsCollection(encodedPlaceholders);
@@ -1123,13 +1135,13 @@ public class KubernetesHelper {
 			}
 			
 		};
-		runServerSideStep(serverUrl, jobToken, position, includeFiles, excludeFiles, placeholders, 
-				getBuildHome(), getWorkspace(), logger);
+		runServerSideStep(serverUrl, jobToken, position, sourcePath, includeFiles, excludeFiles, 
+				placeholders, getBuildHome(), logger);
 	}
 
 	public static void runServerSideStep(String serverUrl, String jobToken, List<Integer> position, 
-			Collection<String> includeFiles, Collection<String> excludeFiles, 
-			Collection<String> placeholders, File buildHome, File workspace, TaskLogger logger) {
+			@Nullable String sourcePath, Collection<String> includeFiles, Collection<String> excludeFiles, 
+			Collection<String> placeholders, File buildHome, TaskLogger logger) {
 		Client client = ClientBuilder.newClient();
 		client.property(ClientProperties.REQUEST_ENTITY_PROCESSING, "CHUNKED");
 		try {
@@ -1153,8 +1165,11 @@ public class KubernetesHelper {
 						writeString(os, entry.getValue());
 					}
 					
+					File sourceDir = new File(buildHome, "workspace");
+					if (sourcePath != null) 
+						sourceDir = new File(sourceDir, replacePlaceholders(sourcePath, placeholderValues));
 					FileUtils.tar(
-							workspace, 
+							sourceDir, 
 							replacePlaceholders(includeFiles, placeholderValues), 
 							replacePlaceholders(excludeFiles, placeholderValues), 
 							os, false);
