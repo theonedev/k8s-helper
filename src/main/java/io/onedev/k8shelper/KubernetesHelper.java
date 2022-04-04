@@ -651,6 +651,11 @@ public class KubernetesHelper {
 			git.addArgs("--depth=" + cloneDepth);
 		git.addArgs(commitHash);
 		git.execute(infoLogger, errorLogger).checkReturnCode();
+		
+		// record commit in a ref so that we can speed up next fetch 
+		git.clearArgs();
+		git.addArgs("update-ref", "refs/heads/onedev-checkout", commitHash);
+		git.execute(infoLogger, errorLogger).checkReturnCode();
 
 		AtomicBoolean originExists = new AtomicBoolean(false);
 		git.clearArgs();
