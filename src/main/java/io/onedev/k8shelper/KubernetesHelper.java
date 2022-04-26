@@ -664,9 +664,9 @@ public class KubernetesHelper {
 
 			@Override
 			public void consume(String line) {
-				if (line.equals("error: remote origin already exists."))
+				if (line.contains("remote origin already exists")) 
 					originExists.set(true);
-				else
+				else 
 					errorLogger.consume(line);
 			}
 			
