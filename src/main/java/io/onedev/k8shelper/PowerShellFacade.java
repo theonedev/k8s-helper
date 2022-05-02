@@ -24,6 +24,7 @@ public class PowerShellFacade extends CommandFacade {
 		return ".ps1";
 	}
 	
+	@Override
 	public String getEndOfLine() {
 		return "\r\n";
 	}

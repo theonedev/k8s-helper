@@ -6,17 +6,20 @@ import javax.annotation.Nullable;
 
 import io.onedev.commons.utils.command.Commandline;
 
-public class BashFacade extends CommandFacade {
+public class ShellFacade extends CommandFacade {
 
 	private static final long serialVersionUID = 1L;
 
-	public BashFacade(@Nullable String image, List<String> commands, boolean useTTY) {
+	private final String shell;
+	
+	public ShellFacade(@Nullable String image, String shell, List<String> commands, boolean useTTY) {
 		super(image, commands, useTTY);
+		this.shell = shell;
 	}
 
 	@Override
 	public Commandline getInterpreter() {
-		return new Commandline("bash");
+		return new Commandline(shell);
 	}
 
 	@Override
@@ -24,6 +27,7 @@ public class BashFacade extends CommandFacade {
 		return ".sh";
 	}
 
+	@Override
 	public String getEndOfLine() {
 		return "\n";
 	}
