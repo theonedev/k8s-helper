@@ -1239,7 +1239,7 @@ public class KubernetesHelper {
         	String placeholder = matcher.group(1);
         	String placeholderValue = placeholderValues.get(placeholder);
         	if (placeholderValue != null) {
-        		matcher.appendReplacement(buffer, placeholderValue);
+        		matcher.appendReplacement(buffer, Matcher.quoteReplacement(placeholderValue));
         	} else if (placeholder.startsWith(WORKSPACE + "/")) {
         		throw new ExplicitException("Error replacing placeholder: unable to find file '" 
         				+ placeholder.substring(WORKSPACE.length()+1) + "' in workspace");
