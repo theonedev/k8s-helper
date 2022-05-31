@@ -4,6 +4,7 @@ import java.io.File;
 
 import javax.annotation.Nullable;
 
+import io.onedev.commons.utils.ExplicitException;
 import io.onedev.commons.utils.FileUtils;
 import io.onedev.commons.utils.command.Commandline;
 
@@ -52,6 +53,8 @@ public class CheckoutFacade extends LeafFacade {
 
 	public void setupWorkingDir(Commandline git, File workspace) {
 		if (getCheckoutPath() != null) {
+			if (getCheckoutPath().contains(".."))
+				throw new ExplicitException("Checkout path should not contain '..'");
 			git.workingDir(new File(workspace, getCheckoutPath()));
 			FileUtils.createDir(git.workingDir());
 		} else {

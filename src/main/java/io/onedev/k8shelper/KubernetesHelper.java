@@ -468,6 +468,12 @@ public class KubernetesHelper {
 								throw new RuntimeException(e);
 							}
 							
+							if (buildImageFacade.getDockerfile() != null && buildImageFacade.getDockerfile().contains(".."))
+								throw new ExplicitException("Dockerfile path should not contain '..'");
+							
+							if (buildImageFacade.getBuildPath() != null && buildImageFacade.getBuildPath().contains(".."))
+								throw new ExplicitException("Docker build path should not contain '..'");
+							
 							if (SystemUtils.IS_OS_WINDOWS) {
 								if (buildImageFacade.getDockerfile() != null)
 									buildCommand.append("-f ").append("%workspace%\\" + buildImageFacade.getDockerfile().replace('/', '\\'));
@@ -515,8 +521,11 @@ public class KubernetesHelper {
 						} else if (facade instanceof RunContainerFacade) {
 							RunContainerFacade containerFacade = (RunContainerFacade) facade;
 							OsContainer container = containerFacade.getContainer(osInfo);
-							if (container.getWorkingDir() != null)
+							if (container.getWorkingDir() != null) {
+								if (container.getWorkingDir().contains(".."))
+									throw new ExplicitException("Container working dir should not container '..'");
 								workingDir = new File(container.getWorkingDir());
+							}
 							// We will inspect container image and populate appropriate commands in sidecar as 
 							// container images are not pulled at init stage
 							commandFacade = new CommandFacade("any", Lists.newArrayList(), true);
@@ -1075,6 +1084,8 @@ public class KubernetesHelper {
 		File workspace = getWorkspace();
 		Commandline git = new Commandline("git");
 		if (checkoutPath != null) {
+			if (checkoutPath.contains(".."))
+				throw new ExplicitException("Checkout path should not contain '..'");
 			git.workingDir(new File(workspace, checkoutPath));
 			FileUtils.createDir(git.workingDir());
 		} else {

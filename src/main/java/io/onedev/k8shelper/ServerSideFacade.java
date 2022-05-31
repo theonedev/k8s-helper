@@ -13,6 +13,7 @@ import javax.annotation.Nullable;
 
 import org.apache.tools.ant.DirectoryScanner;
 
+import io.onedev.commons.utils.ExplicitException;
 import io.onedev.commons.utils.FileUtils;
 
 public class ServerSideFacade extends LeafFacade {
@@ -65,8 +66,12 @@ public class ServerSideFacade extends LeafFacade {
 			Map<String, String> placeholderValues = readPlaceholderValues(buildHome, placeholders);
 			
 			File sourceDir = new File(buildHome, "workspace");
-			if (getSourcePath() != null)
-				sourceDir = new File(sourceDir, replacePlaceholders(getSourcePath(), placeholderValues));
+			if (getSourcePath() != null) {
+				String sourcePath = replacePlaceholders(getSourcePath(), placeholderValues);
+				if (sourcePath.contains(".."))
+					throw new ExplicitException("Source path should not contain '..'");
+				sourceDir = new File(sourceDir, sourcePath);
+			}
 			
 			Collection<String> includeFiles = replacePlaceholders(getIncludeFiles(), placeholderValues);
 			Collection<String> excludeFiles = replacePlaceholders(getExcludeFiles(), placeholderValues);
