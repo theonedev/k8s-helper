@@ -37,10 +37,11 @@ public abstract class JobCache {
 			
 		}; 
 		for (File keyDir: home.listFiles(filter)) {
-			for (File instanceDir: keyDir.listFiles(filter)) 
+			for (File instanceDir: keyDir.listFiles(filter)) {
 				instances.put(
 						new CacheInstance(instanceDir.getName(), keyDir.getName()), 
 						new Date(instanceDir.lastModified()));
+			}
 		}
 		
 		allocations = allocate(new CacheAllocationRequest(new Date(), instances));

@@ -110,12 +110,12 @@ public class KubernetesHelper {
 			return new File("/onedev-build/trust-certs");
 	}
 	
-	private static File getCacheHome() {
+	private static File getCacheHome(String executorName) {
 		File file;
 		if (SystemUtils.IS_OS_WINDOWS) 
-			file = new File("C:\\onedev-build\\cache");
+			file = new File("C:\\onedev-build\\cache\\" + executorName);
 		else
-			file = new File("/onedev-build/cache");
+			file = new File("/onedev-build/cache/" + executorName);
 		if (!file.exists()) synchronized (cacheHomeCreationLock) {
 			FileUtils.createDir(file);
 		}
@@ -333,7 +333,6 @@ public class KubernetesHelper {
 		OsInfo osInfo = getOsInfo();
 		Client client = ClientBuilder.newClient();
 		try {
-			File cacheHome = getCacheHome();
 			FileUtils.createDir(getCommandHome());
 			FileUtils.createDir(getMarkHome());
 			if (test) {
@@ -344,15 +343,6 @@ public class KubernetesHelper {
 				try (Response response = builder.get()) {
 					checkStatus(response);
 				} 
-				File tempFile = null;
-				try {
-					tempFile = File.createTempFile("test", null, cacheHome);
-				} catch (IOException e) {
-					throw new RuntimeException(e);
-				} finally {
-					if (tempFile != null)
-						tempFile.delete();
-				}
 				FileUtils.createDir(getWorkspace());
 				List<String> commands = new ArrayList<>();
 				if (SystemUtils.IS_OS_WINDOWS)  
@@ -382,6 +372,7 @@ public class KubernetesHelper {
 				
 				logger.info("Setting up job cache...");
 				
+				File cacheHome = getCacheHome(jobData.getExecutorName());
 				JobCache cache = new JobCache(cacheHome) {
 
 					@Override
