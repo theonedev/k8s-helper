@@ -90,8 +90,6 @@ public class KubernetesHelper {
 	
 	private static final Logger logger = LoggerFactory.getLogger(KubernetesHelper.class);
 	
-	private static final Object cacheHomeCreationLock = new Object();
-	
 	private static File getBuildHome() {
 		if (SystemUtils.IS_OS_WINDOWS) 
 			return new File("C:\\onedev-build");
@@ -111,15 +109,10 @@ public class KubernetesHelper {
 	}
 	
 	private static File getCacheHome(String executorName) {
-		File file;
 		if (SystemUtils.IS_OS_WINDOWS) 
-			file = new File("C:\\onedev-build\\cache\\" + executorName);
+			return new File("C:\\onedev-build\\cache\\" + executorName);
 		else
-			file = new File("/onedev-build/cache/" + executorName);
-		if (!file.exists()) synchronized (cacheHomeCreationLock) {
-			FileUtils.createDir(file);
-		}
-		return file;
+			return new File("/onedev-build/cache/" + executorName);
 	}
 	
 	private static File getWorkspace() {

@@ -17,6 +17,8 @@ import io.onedev.commons.utils.PathUtils;
 
 public abstract class JobCache {
 
+	private static final Object cacheHomeCreationLock = new Object();
+	
 	private final File home;
 	
 	private Map<CacheInstance, String> allocations;
@@ -36,16 +38,21 @@ public abstract class JobCache {
 			}
 			
 		}; 
-		for (File keyDir: home.listFiles(filter)) {
-			for (File instanceDir: keyDir.listFiles(filter)) {
-				instances.put(
-						new CacheInstance(instanceDir.getName(), keyDir.getName()), 
-						new Date(instanceDir.lastModified()));
+		if (home.exists()) {
+			for (File keyDir: home.listFiles(filter)) {
+				for (File instanceDir: keyDir.listFiles(filter)) {
+					instances.put(
+							new CacheInstance(instanceDir.getName(), keyDir.getName()), 
+							new Date(instanceDir.lastModified()));
+				}
 			}
 		}
 		
 		allocations = allocate(new CacheAllocationRequest(new Date(), instances));
-		
+		if (!allocations.isEmpty() && !home.exists()) synchronized (cacheHomeCreationLock) {
+			FileUtils.createDir(home);
+		}
+		 
 		for (Iterator<Map.Entry<CacheInstance, String>> it = allocations.entrySet().iterator(); it.hasNext();) {
 			Map.Entry<CacheInstance, String> entry = it.next();
 			File cacheDirectory = entry.getKey().getDirectory(home);
@@ -55,7 +62,7 @@ public abstract class JobCache {
 				else if (forShellExecutor && new File(entry.getValue()).isAbsolute())
 					throw new ExplicitException("Shell executor does not support absolute cache path: " + entry.getValue());
 				
-				if (!cacheDirectory.exists())
+				if (!cacheDirectory.exists()) 
 					FileUtils.createDir(cacheDirectory);
 				File tempFile = null;
 				try {
@@ -101,10 +108,6 @@ public abstract class JobCache {
 		}
 	}
 
-	public File getHome() {
-		return home;
-	}
-	
 	public Map<CacheInstance, String> getAllocations() {
 		return Preconditions.checkNotNull(allocations, "Cache not setup yet");
 	}
