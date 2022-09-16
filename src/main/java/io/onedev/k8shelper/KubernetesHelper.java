@@ -381,7 +381,7 @@ public class KubernetesHelper {
 					}
 
 					@Override
-					protected void clean(File cacheDir) {
+					protected void delete(File cacheDir) {
 						FileUtils.cleanDir(cacheDir);						
 					}
 					
@@ -746,6 +746,14 @@ public class KubernetesHelper {
 			String branch = refName.substring("refs/heads/".length());
 			git.clearArgs();
 			git.addArgs("checkout", branch);
+			git.execute(infoLogger, errorLogger).checkReturnCode();
+			
+			git.clearArgs();
+			git.addArgs("update-ref", "refs/remotes/origin/" + branch, commitHash);
+			git.execute(infoLogger, errorLogger).checkReturnCode();
+			
+			git.clearArgs();
+			git.addArgs("branch", "--set-upstream-to=origin/" + branch, branch);
 			git.execute(infoLogger, errorLogger).checkReturnCode();
 		}
 	}

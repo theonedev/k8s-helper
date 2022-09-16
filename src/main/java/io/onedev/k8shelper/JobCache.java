@@ -75,8 +75,7 @@ public abstract class JobCache {
 				}
 			} else {
 				if (cacheDirectory.exists()) {
-					clean(cacheDirectory);
-					FileUtils.deleteDir(cacheDirectory);
+					delete(cacheDirectory);
 				}
 				it.remove();
 			}
@@ -114,6 +113,6 @@ public abstract class JobCache {
 
 	protected abstract Map<CacheInstance, String> allocate(CacheAllocationRequest request);
 	
-	protected abstract void clean(File cacheDir);
+	protected abstract void delete(File cacheDir);
 	
 }
