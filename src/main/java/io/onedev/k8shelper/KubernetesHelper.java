@@ -614,8 +614,8 @@ public class KubernetesHelper {
 	}
 
 	public static void cloneRepository(Commandline git, String cloneUrl, String remoteUrl, 
-			String commitHash, boolean withLfs, boolean withSubmodules, int cloneDepth, 
-			LineConsumer infoLogger, LineConsumer errorLogger) {
+			String refName, String commitHash, boolean withLfs, boolean withSubmodules, 
+			int cloneDepth, LineConsumer infoLogger, LineConsumer errorLogger) {
 		git.clearArgs();
 		if (!new File(git.workingDir(), ".git").exists()) {
 			git.addArgs("init", ".");
@@ -645,11 +645,6 @@ public class KubernetesHelper {
 		git.addArgs(commitHash);
 		git.execute(infoLogger, errorLogger).checkReturnCode();
 		
-		// record commit in a ref so that we can speed up next fetch 
-		git.clearArgs();
-		git.addArgs("update-ref", "refs/heads/onedev-checkout", commitHash);
-		git.execute(infoLogger, errorLogger).checkReturnCode();
-
 		AtomicBoolean originExists = new AtomicBoolean(false);
 		git.clearArgs();
 		git.addArgs("remote", "add", "origin", remoteUrl);
@@ -704,7 +699,7 @@ public class KubernetesHelper {
 			}
 			
 		}).checkReturnCode();
-		
+
 		if (withSubmodules && new File(git.workingDir(), ".gitmodules").exists()) {
 			// deinit submodules in case submodule url is changed
 			git.clearArgs();
@@ -741,6 +736,17 @@ public class KubernetesHelper {
 				}
 				
 			}).checkReturnCode();
+		}
+
+		git.clearArgs();
+		git.addArgs("update-ref", refName, commitHash);
+		git.execute(infoLogger, errorLogger).checkReturnCode();
+
+		if (refName.startsWith("refs/heads/")) {
+			String branch = refName.substring("refs/heads/".length());
+			git.clearArgs();
+			git.addArgs("checkout", branch);
+			git.execute(infoLogger, errorLogger).checkReturnCode();
 		}
 	}
 	
@@ -1108,7 +1114,7 @@ public class KubernetesHelper {
 		}
 		
 		cloneRepository(git, cloneInfo.getCloneUrl(), cloneInfo.getCloneUrl(), 
-				jobData.getCommitHash(), withLfs, withSubmodules, cloneDepth, 
+				jobData.getRefName(), jobData.getCommitHash(), withLfs, withSubmodules, cloneDepth, 
 				infoLogger, errorLogger);
 	}
 	
