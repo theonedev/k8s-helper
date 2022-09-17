@@ -746,7 +746,17 @@ public class KubernetesHelper {
 			String branch = refName.substring("refs/heads/".length());
 			git.clearArgs();
 			git.addArgs("checkout", branch);
-			git.execute(infoLogger, errorLogger).checkReturnCode();
+			git.execute(infoLogger, new LineConsumer() {
+
+				@Override
+				public void consume(String line) {
+					if (line.contains("Switched to branch")) 
+						infoLogger.consume(line);
+					else 
+						errorLogger.consume(line);
+				}
+				
+			}).checkReturnCode();
 			
 			git.clearArgs();
 			git.addArgs("update-ref", "refs/remotes/origin/" + branch, commitHash);
