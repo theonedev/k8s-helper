@@ -15,6 +15,11 @@ public class PowerShellFacade extends CommandFacade {
 	}
 
 	@Override
+	protected String getPauseInvokeCommand() {
+		return "cmd /c $env:ONEDEV_WORKSPACE%\\..\\pause.bat";
+	}
+
+	@Override
 	public Commandline getInterpreter() {
 		return new Commandline("powershell").addArgs("-executionpolicy", "remotesigned", "-file");
 	}

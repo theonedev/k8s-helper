@@ -78,6 +78,8 @@ public class KubernetesHelper {
 	
 	public static final String BUILD_VERSION = "buildVersion";
 	
+	public static final String PAUSE = "pause";
+	
 	public static final String WORKSPACE = "workspace";
 	
 	public static final String ATTRIBUTES = "attributes";
@@ -977,8 +979,10 @@ public class KubernetesHelper {
 						stepScript = FileUtils.readFileToString(stepScriptFile, UTF_8);
 					}
 
-					stepScript = replacePlaceholders(stepScript, getBuildHome());
+					if (facade instanceof CommandFacade) 
+						((CommandFacade) facade).generatePauseCommand(getBuildHome());
 					
+					stepScript = replacePlaceholders(stepScript, getBuildHome());
 					FileUtils.writeFile(stepScriptFile, stepScript, UTF_8.name());
 					
 					file = new File(getMarkHome(), positionStr + ".start");
