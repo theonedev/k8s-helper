@@ -23,6 +23,11 @@ public class ShellFacade extends CommandFacade {
 	}
 
 	@Override
+	public String getShellExecutable() {
+		return shell;
+	}
+
+	@Override
 	public String getScriptExtension() {
 		return ".sh";
 	}

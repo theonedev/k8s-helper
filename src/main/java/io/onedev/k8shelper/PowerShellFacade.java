@@ -25,6 +25,11 @@ public class PowerShellFacade extends CommandFacade {
 	}
 
 	@Override
+	public String getShellExecutable() {
+		return "powershell";
+	}
+
+	@Override
 	public String getScriptExtension() {
 		return ".ps1";
 	}

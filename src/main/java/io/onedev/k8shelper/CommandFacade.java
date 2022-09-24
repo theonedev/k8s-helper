@@ -83,6 +83,13 @@ public class CommandFacade extends LeafFacade {
 		else
 			return new Commandline("sh");
 	}
+	
+	public String getShellExecutable() {
+		if (SystemUtils.IS_OS_WINDOWS)
+			return "cmd";
+		else
+			return "sh";
+	}
 
 	public String getScriptExtension() {
 		if (SystemUtils.IS_OS_WINDOWS)
