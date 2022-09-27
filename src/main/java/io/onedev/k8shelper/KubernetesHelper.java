@@ -84,6 +84,10 @@ public class KubernetesHelper {
 	
 	public static final String ATTRIBUTES = "attributes";
 	
+	public static final String BEGIN_STEP_PREFIX = "##onedev_begin_step";
+	
+	public static final String END_STEP_PREFIX = "##onedev_end_step";
+	
 	public static final String PLACEHOLDER_PREFIX = "<&onedev#";
 	
 	public static final String PLACEHOLDER_SUFFIX = "#onedev&>";
@@ -151,7 +155,7 @@ public class KubernetesHelper {
 			List<String> setupCommands, CommandFacade commandFacade, File workspace, 
 			OsInfo osInfo) {
 		try {
-			String positionStr = stringifyPosition(position);
+			String positionStr = stringifyStepPosition(position);
 			File commandHome = getCommandHome();
 			File stepScriptFile = new File(commandHome, "step-" + positionStr + commandFacade.getScriptExtension());
 			OsExecution execution = commandFacade.getExecution(osInfo);
@@ -186,10 +190,12 @@ public class KubernetesHelper {
 						"ping 127.0.0.1 -n 2 > nul",
 						"goto wait",
 						":start",
+						"echo " + BEGIN_STEP_PREFIX + positionStr,
 						"cd " + workspace.getAbsolutePath() 
 								+ " && cmd /c " + setupScriptFile.getAbsolutePath()
 								+ " && cmd /c echo " + TaskLogger.wrapWithAnsiNotice("Running step ^\"" + escapedStepNames + "^\"...")
 								+ " && " + commandFacade.getInterpreter() + " " + stepScriptFile.getAbsolutePath(), 
+						"echo " + END_STEP_PREFIX + positionStr,
 						"set exit_code=%errorlevel%",
 						"if \"%exit_code%\"==\"0\" (",
 						"	echo " + TaskLogger.wrapWithAnsiSuccess("Step ^\"" + escapedStepNames + "^\" is successful"),
@@ -227,10 +233,12 @@ public class KubernetesHelper {
 						"  echo " + LOG_END_MESSAGE,
 						"  exit 1",
 						"fi",
+						"echo " + BEGIN_STEP_PREFIX + positionStr,
 						"cd " + workspace.getAbsolutePath() 
 								+ " && sh " + setupScriptFile.getAbsolutePath()
 								+ " && echo '" + TaskLogger.wrapWithAnsiNotice("Running step \"" + escapedStepNames + "\"...") + "'" 
 								+ " && " + commandFacade.getInterpreter() + " " + stepScriptFile.getAbsolutePath(), 
+						"echo " + END_STEP_PREFIX + positionStr,
 						"exitCode=\"$?\"", 
 						"if [ $exitCode -eq 0 ]",
 						"then",
@@ -430,7 +438,7 @@ public class KubernetesHelper {
 							}
 						}
 						
-						String positionStr = stringifyPosition(position);
+						String positionStr = stringifyStepPosition(position);
 
 						File workingDir = getWorkspace();
 						CommandFacade commandFacade;
@@ -590,12 +598,12 @@ public class KubernetesHelper {
 		}
 	}
 	
-	public static String stringifyPosition(List<Integer> position) {
-		return StringUtils.join(position, "-");
+	public static String stringifyStepPosition(List<Integer> stepPosition) {
+		return StringUtils.join(stepPosition, "-");
 	}
 	
-	public static List<Integer> parsePosition(String position) {
-		return Splitter.on('-').splitToList(position)
+	public static List<Integer> parseStepPosition(String stepPosition) {
+		return Splitter.on('-').splitToList(stepPosition)
 				.stream()
 				.map(it->Integer.parseInt(it))
 				.collect(Collectors.toList());
@@ -956,7 +964,7 @@ public class KubernetesHelper {
 
 			@Override
 			public boolean execute(LeafFacade facade, List<Integer> position) {
-				String positionStr = stringifyPosition(position);
+				String positionStr = stringifyStepPosition(position);
 				
 				File file;
 				
@@ -1018,7 +1026,7 @@ public class KubernetesHelper {
 
 			@Override
 			public void skip(LeafFacade facade, List<Integer> position) {
-				File file = new File(getMarkHome(), stringifyPosition(position) + ".skip");
+				File file = new File(getMarkHome(), stringifyStepPosition(position) + ".skip");
 				try {
 					if (!file.createNewFile()) 
 						throw new RuntimeException("Failed to create file: " + file.getAbsolutePath());
@@ -1145,7 +1153,7 @@ public class KubernetesHelper {
 			@Nullable String encodedSourcePath) {
 		installJVMCert();
 
-		List<Integer> position = parsePosition(positionStr);
+		List<Integer> position = parseStepPosition(positionStr);
 		String sourcePath = null;
 		if (encodedSourcePath != null) {
 			sourcePath = new String(Base64.getDecoder().decode(
