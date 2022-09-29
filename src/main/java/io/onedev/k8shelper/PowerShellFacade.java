@@ -20,13 +20,16 @@ public class PowerShellFacade extends CommandFacade {
 	}
 
 	@Override
-	public Commandline getInterpreter() {
+	public Commandline getScriptInterpreter() {
 		return new Commandline("powershell").addArgs("-executionpolicy", "remotesigned", "-file");
 	}
 
 	@Override
-	public String getShellExecutable() {
-		return "powershell";
+	public String[] getShell(boolean isLinux, String workingDir) {
+		if (workingDir != null)
+			return new String[]{"cmd", "/c", String.format("cd %s && powershell", workingDir)};
+		else
+			return new String[]{"powershell"};
 	}
 
 	@Override

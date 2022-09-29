@@ -77,18 +77,24 @@ public class CommandFacade extends LeafFacade {
 			return "sh $ONEDEV_WORKSPACE/../pause.sh";
 	}
 	
-	public Commandline getInterpreter() {
+	public Commandline getScriptInterpreter() {
 		if (SystemUtils.IS_OS_WINDOWS) 
 			return new Commandline("cmd").addArgs("/c");
 		else
 			return new Commandline("sh");
 	}
 	
-	public String getShellExecutable() {
-		if (SystemUtils.IS_OS_WINDOWS)
-			return "cmd";
-		else
-			return "sh";
+	public String[] getShell(boolean isWindows, @Nullable String workingDir) {
+		if (workingDir != null) {
+			if (isWindows)
+				return new String[]{"cmd", "/c", String.format("cd '%s' && cmd", workingDir)};
+			else
+				return new String[]{"sh", "-c", String.format("cd '%s' && sh", workingDir)};
+		} else if (isWindows) {
+			return new String[]{"cmd"};
+		} else {
+			return new String[]{"sh"};
+		}
 	}
 
 	public String getScriptExtension() {

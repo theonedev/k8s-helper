@@ -2,13 +2,13 @@ package io.onedev.k8shelper;
 
 import java.util.List;
 
-public class ContainerCommand {
+public class ContainerConfig {
 
 	private final List<String> entrypoint;
 	
 	private final List<String> cmd;
 	
-	public ContainerCommand(List<String> entrypoint, List<String> cmd) {
+	public ContainerConfig(List<String> entrypoint, List<String> cmd) {
 		this.entrypoint = entrypoint;
 		this.cmd = cmd;
 	}
@@ -20,5 +20,5 @@ public class ContainerCommand {
 	public List<String> getCmd() {
 		return cmd;
 	}
-	
+
 }

@@ -84,10 +84,6 @@ public class KubernetesHelper {
 	
 	public static final String ATTRIBUTES = "attributes";
 	
-	public static final String BEGIN_STEP_PREFIX = "##onedev_begin_step";
-	
-	public static final String END_STEP_PREFIX = "##onedev_end_step";
-	
 	public static final String PLACEHOLDER_PREFIX = "<&onedev#";
 	
 	public static final String PLACEHOLDER_SUFFIX = "#onedev&>";
@@ -152,7 +148,7 @@ public class KubernetesHelper {
 	}
 	
 	private static void generateCommandScript(List<Integer> position, String stepNames, 
-			List<String> setupCommands, CommandFacade commandFacade, File workspace, 
+			List<String> setupCommands, CommandFacade commandFacade, @Nullable File workingDir, 
 			OsInfo osInfo) {
 		try {
 			String positionStr = stringifyStepPosition(position);
@@ -173,6 +169,7 @@ public class KubernetesHelper {
 				String markPrefix = getMarkHome().getAbsolutePath() + "\\" + positionStr;
 				List<String> scriptContent = Lists.newArrayList(
 						"@echo off",
+						"set \"initialWorkingDir=%cd%\"",
 						":wait",
 						"if exist \"" + markPrefix + ".skip\" (",
 						"  echo " + TaskLogger.wrapWithAnsiNotice("Step ^\"" + escapedStepNames + "^\" is skipped"),
@@ -190,12 +187,10 @@ public class KubernetesHelper {
 						"ping 127.0.0.1 -n 2 > nul",
 						"goto wait",
 						":start",
-						"echo " + BEGIN_STEP_PREFIX + positionStr,
-						"cd " + workspace.getAbsolutePath() 
+						"cd " + (workingDir!=null? workingDir.getAbsolutePath(): "%initialWorkingDir%") 
 								+ " && cmd /c " + setupScriptFile.getAbsolutePath()
 								+ " && cmd /c echo " + TaskLogger.wrapWithAnsiNotice("Running step ^\"" + escapedStepNames + "^\"...")
-								+ " && " + commandFacade.getInterpreter() + " " + stepScriptFile.getAbsolutePath(), 
-						"echo " + END_STEP_PREFIX + positionStr,
+								+ " && " + commandFacade.getScriptInterpreter() + " " + stepScriptFile.getAbsolutePath(), 
 						"set exit_code=%errorlevel%",
 						"if \"%exit_code%\"==\"0\" (",
 						"	echo " + TaskLogger.wrapWithAnsiSuccess("Step ^\"" + escapedStepNames + "^\" is successful"),
@@ -215,6 +210,7 @@ public class KubernetesHelper {
 				File scriptFile = new File(commandHome, positionStr + ".sh");
 				String markPrefix = getMarkHome().getAbsolutePath() + "/" + positionStr;
 				List<String> wrapperScriptContent = Lists.newArrayList(
+						"initialWorkingDir=$(pwd)",
 						"while [ ! -f " + markPrefix + ".start ] && [ ! -f " + markPrefix + ".skip ] && [ ! -f " + markPrefix + ".error ]",
 						"do",
 						"  sleep 0.1",
@@ -233,12 +229,10 @@ public class KubernetesHelper {
 						"  echo " + LOG_END_MESSAGE,
 						"  exit 1",
 						"fi",
-						"echo " + BEGIN_STEP_PREFIX + positionStr,
-						"cd " + workspace.getAbsolutePath() 
+						"cd " + (workingDir!=null? "'" + workingDir.getAbsolutePath() + "'": "$initialWorkingDir") 
 								+ " && sh " + setupScriptFile.getAbsolutePath()
 								+ " && echo '" + TaskLogger.wrapWithAnsiNotice("Running step \"" + escapedStepNames + "\"...") + "'" 
-								+ " && " + commandFacade.getInterpreter() + " " + stepScriptFile.getAbsolutePath(), 
-						"echo " + END_STEP_PREFIX + positionStr,
+								+ " && " + commandFacade.getScriptInterpreter() + " " + stepScriptFile.getAbsolutePath(), 
 						"exitCode=\"$?\"", 
 						"if [ $exitCode -eq 0 ]",
 						"then",
@@ -528,6 +522,8 @@ public class KubernetesHelper {
 								if (container.getWorkingDir().contains(".."))
 									throw new ExplicitException("Container working dir should not container '..'");
 								workingDir = new File(container.getWorkingDir());
+							} else {
+								workingDir = null;
 							}
 							// We will inspect container image and populate appropriate commands in sidecar as 
 							// container images are not pulled at init stage
@@ -831,7 +827,7 @@ public class KubernetesHelper {
 	}
 
 	@Nullable
-	private static ContainerCommand getContainerCommand(String image, Commandline inspect) {
+	private static ContainerConfig getContainerConfig(String image, Commandline inspect) {
 		AtomicBoolean imageNotAvailable = new AtomicBoolean(false);
 		
 		StringBuilder builder = new StringBuilder();
@@ -880,7 +876,7 @@ public class KubernetesHelper {
 							cmd.add(elementNode.asText());
 					}
 					
-					return new ContainerCommand(entrypoint, cmd);
+					return new ContainerConfig(entrypoint, cmd);
 				}
 			} catch (IOException e) {
 				throw new RuntimeException(e);
@@ -892,12 +888,12 @@ public class KubernetesHelper {
 	private static String getContainerRunScript(String image, @Nullable String args) {
 		while (true) {
 			Commandline inspect = new Commandline("nerdctl").addArgs("-n", "k8s.io");
-			ContainerCommand command = getContainerCommand(image, inspect);
-			if (command == null) {
+			ContainerConfig config = getContainerConfig(image, inspect);
+			if (config == null) {
 				inspect = new Commandline("docker");
-				command = getContainerCommand(image, inspect);
+				config = getContainerConfig(image, inspect);
 			}
-			if (command == null) {
+			if (config == null) {
 				try {
 					Thread.sleep(1000);
 				} catch (InterruptedException e) {
@@ -911,16 +907,16 @@ public class KubernetesHelper {
 				else
 					parsedArgs = new ArrayList<>();
 				
-				if (!command.getEntrypoint().isEmpty()) {
-					effectiveCommand.addAll(command.getEntrypoint());
+				if (!config.getEntrypoint().isEmpty()) {
+					effectiveCommand.addAll(config.getEntrypoint());
 					if (!parsedArgs.isEmpty())
 						effectiveCommand.addAll(parsedArgs);
 					else
-						effectiveCommand.addAll(command.getCmd());
+						effectiveCommand.addAll(config.getCmd());
 				} else if (!parsedArgs.isEmpty()) {
 					effectiveCommand.addAll(parsedArgs);
-				} else if (!command.getCmd().isEmpty()) {
-					effectiveCommand.addAll(command.getCmd());
+				} else if (!config.getCmd().isEmpty()) {
+					effectiveCommand.addAll(config.getCmd());
 				} else {
 					throw new ExplicitException("No command specified for image " + image);
 				}
@@ -978,7 +974,7 @@ public class KubernetesHelper {
 				Preconditions.checkState(stepScriptFile != null);
 
 				try {
-					String stepScript = FileUtils.readFileToString(stepScriptFile, UTF_8);
+					String stepScript;
 					if (facade instanceof RunContainerFacade) {
 						RunContainerFacade rubContainerFacade = (RunContainerFacade) facade;
 						OsContainer container = rubContainerFacade.getContainer(osInfo);

@@ -18,13 +18,16 @@ public class ShellFacade extends CommandFacade {
 	}
 
 	@Override
-	public Commandline getInterpreter() {
+	public Commandline getScriptInterpreter() {
 		return new Commandline(shell);
 	}
 
 	@Override
-	public String getShellExecutable() {
-		return shell;
+	public String[] getShell(boolean isLinux, String workingDir) {
+		if (workingDir != null)
+			return new String[]{shell, "-c", String.format("cd '%s' && '%s'", workingDir, shell)};
+		else
+			return new String[]{shell};
 	}
 
 	@Override
