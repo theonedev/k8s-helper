@@ -1,5 +1,6 @@
 package io.onedev.k8shelper;
 
+import java.util.ArrayList;
 import java.util.List;
 
 public abstract class LeafFacade implements StepFacade {
@@ -21,4 +22,22 @@ public abstract class LeafFacade implements StepFacade {
 		return visitor.visit(this, position);
 	}
 		
+	public static LeafFacade of(List<Action> actions, List<Integer> stepPosition) {
+		StepFacade entryExecutable = new CompositeFacade(actions);
+		
+		LeafVisitor<LeafFacade> visitor = new LeafVisitor<LeafFacade>() {
+
+			@Override
+			public LeafFacade visit(LeafFacade executable, List<Integer> position) {
+				if (position.equals(stepPosition))
+					return executable;
+				else
+					return null;
+			}
+			
+		};															
+		
+		return entryExecutable.traverse(visitor, new ArrayList<>());
+	}
+	
 }

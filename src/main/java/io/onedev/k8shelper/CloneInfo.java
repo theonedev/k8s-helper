@@ -1,8 +1,9 @@
 package io.onedev.k8shelper;
 
+import static java.nio.charset.StandardCharsets.UTF_8;
+
 import java.io.File;
 import java.io.Serializable;
-import static java.nio.charset.StandardCharsets.UTF_8;
 import java.util.Base64;
 import java.util.List;
 
@@ -14,8 +15,6 @@ import io.onedev.commons.utils.command.LineConsumer;
 public abstract class CloneInfo implements Serializable {
 	
 	private static final long serialVersionUID = 1L;
-	
-	public static final String ONEDEV_AUTHORIZATION = "OneDev-Authorization";
 	
 	private final String cloneUrl;
 	

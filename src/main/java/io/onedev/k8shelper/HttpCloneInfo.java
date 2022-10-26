@@ -4,6 +4,8 @@ import java.io.File;
 import java.nio.charset.StandardCharsets;
 import java.util.Base64;
 
+import javax.ws.rs.core.HttpHeaders;
+
 import io.onedev.commons.utils.command.Commandline;
 import io.onedev.commons.utils.command.LineConsumer;
 
@@ -22,7 +24,7 @@ public class HttpCloneInfo extends CloneInfo {
 	@Override
 	public void writeAuthData(File homeDir, Commandline git, LineConsumer infoLogger, LineConsumer errorLogger) {
 		git.clearArgs();
-		String extraHeader = ONEDEV_AUTHORIZATION + ": " + KubernetesHelper.BEARER + " " + accessToken;
+		String extraHeader = HttpHeaders.AUTHORIZATION + ": " + KubernetesHelper.BEARER + " " + accessToken;
 		git.addArgs("config", "--global", "http.extraHeader", extraHeader);
 		git.execute(infoLogger, errorLogger).checkReturnCode();
 	}

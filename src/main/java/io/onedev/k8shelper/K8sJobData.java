@@ -3,7 +3,7 @@ package io.onedev.k8shelper;
 import java.io.Serializable;
 import java.util.List;
 
-public class JobData implements Serializable {
+public class K8sJobData implements Serializable {
 
 	private static final long serialVersionUID = 1L;
 
@@ -15,7 +15,7 @@ public class JobData implements Serializable {
 	
 	private final List<Action> actions;
 	
-	public JobData(String executorName, String refName, String commitHash, List<Action> actions) {
+	public K8sJobData(String executorName, String refName, String commitHash, List<Action> actions) {
 		this.executorName = executorName;
 		this.refName = refName;
 		this.commitHash = commitHash;

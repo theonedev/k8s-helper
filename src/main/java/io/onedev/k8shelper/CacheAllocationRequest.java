@@ -1,12 +1,15 @@
 package io.onedev.k8shelper;
 
+import java.io.Serializable;
 import java.util.Date;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
 import com.google.common.base.Splitter;
 
-public class CacheAllocationRequest {
+public class CacheAllocationRequest implements Serializable {
+
+	private static final long serialVersionUID = 1L;
 
 	private final Date currentTime;
 	

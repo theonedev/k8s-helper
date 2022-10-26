@@ -328,18 +328,22 @@ public class KubernetesHelper {
 	public static void init(String serverUrl, String jobToken, boolean test) {
 		installJVMCert();
 		OsInfo osInfo = getOsInfo();
-		Client client = ClientBuilder.newClient();
 		try {
 			FileUtils.createDir(getCommandHome());
 			FileUtils.createDir(getMarkHome());
 			if (test) {
 				logger.info("Connecting to server '{}'...", serverUrl);
-				WebTarget target = client.target(serverUrl).path("api/k8s/test");
-				Invocation.Builder builder =  target.request();
-				builder.header(HttpHeaders.AUTHORIZATION, BEARER + " " + jobToken);
-				try (Response response = builder.get()) {
-					checkStatus(response);
-				} 
+				Client client = ClientBuilder.newClient();
+				try {
+					WebTarget target = client.target(serverUrl).path("api/k8s/test");
+					Invocation.Builder builder =  target.request();
+					builder.header(HttpHeaders.AUTHORIZATION, BEARER + " " + jobToken);
+					try (Response response = builder.get()) {
+						checkStatus(response);
+					} 
+				} finally {
+					client.close();
+				}
 				FileUtils.createDir(getWorkspace());
 				List<String> commands = new ArrayList<>();
 				if (SystemUtils.IS_OS_WINDOWS)  
@@ -348,22 +352,27 @@ public class KubernetesHelper {
 				generateCommandScript(Lists.newArrayList(0), "test", Lists.newArrayList(), 
 						new CommandFacade("any", commands, true), getWorkspace(), osInfo);
 			} else {
-				WebTarget target = client.target(serverUrl).path("api/k8s/job-data");
-				Invocation.Builder builder =  target.request();
-				builder.header(HttpHeaders.AUTHORIZATION, BEARER + " " + jobToken);
-				
-				logger.info("Retrieving job data from {}...", serverUrl);
-				
-				JobData jobData;
-				byte[] jobDataBytes;
-				try (Response response = builder.post(
-						Entity.entity(getWorkspace().getAbsolutePath(), MediaType.APPLICATION_OCTET_STREAM))) {
-					checkStatus(response);
-					jobDataBytes = response.readEntity(byte[].class);
+				K8sJobData jobData;
+				Client client = ClientBuilder.newClient();
+				try {
+					WebTarget target = client.target(serverUrl).path("api/k8s/job-data");
+					Invocation.Builder builder =  target.request();
+					builder.header(HttpHeaders.AUTHORIZATION, BEARER + " " + jobToken);
+					
+					logger.info("Retrieving job data from {}...", serverUrl);
+					
+					byte[] jobDataBytes;
+					try (Response response = builder.post(
+							Entity.entity(getWorkspace().getAbsolutePath(), MediaType.APPLICATION_OCTET_STREAM))) {
+						checkStatus(response);
+						jobDataBytes = response.readEntity(byte[].class);
+					}
+					
+					FileUtils.writeByteArrayToFile(getJobDataFile(), jobDataBytes);
+					jobData = SerializationUtils.deserialize(jobDataBytes);
+				} finally {
+					client.close();
 				}
-				
-				FileUtils.writeByteArrayToFile(getJobDataFile(), jobDataBytes);
-				jobData = SerializationUtils.deserialize(jobDataBytes);
 				
 				File workspace = getWorkspace();
 				
@@ -374,14 +383,7 @@ public class KubernetesHelper {
 
 					@Override
 					protected Map<CacheInstance, String> allocate(CacheAllocationRequest request) {
-						WebTarget target = client.target(serverUrl).path("api/k8s/allocate-job-caches");
-						Invocation.Builder builder =  target.request();
-						builder.header(HttpHeaders.AUTHORIZATION, BEARER + " " + jobToken);
-						try (Response response = builder.post(Entity.entity(request.toString(),
-								MediaType.APPLICATION_OCTET_STREAM))) {
-							checkStatus(response);
-							return SerializationUtils.deserialize(response.readEntity(byte[].class));
-						}
+						return allocateCaches(serverUrl, jobToken, request);
 					}
 
 					@Override
@@ -575,22 +577,11 @@ public class KubernetesHelper {
 				
 				logger.info("Downloading job dependencies from {}...", serverUrl);
 				
-				target = client.target(serverUrl).path("api/k8s/download-dependencies");
-				builder =  target.request();
-				builder.header(HttpHeaders.AUTHORIZATION, BEARER + " " + jobToken);
-				
-				try (Response response = builder.get()){
-					checkStatus(response);
-					try (InputStream is = response.readEntity(InputStream.class)) {
-						FileUtils.untar(is, workspace, false);
-					} 
-				}
+				downloadDependencies(jobToken, serverUrl, workspace);
 				logger.info("Job workspace initialized");
 			}
 		} catch (IOException e) {
 			throw new RuntimeException(e);
-		} finally {
-			client.close();
 		}
 	}
 	
@@ -774,7 +765,7 @@ public class KubernetesHelper {
 		}
 	}
 	
-	private static JobData readJobData() {
+	private static K8sJobData readJobData() {
 		byte[] jobDataBytes;
 		try {
 			jobDataBytes = FileUtils.readFileToByteArray(getJobDataFile());
@@ -1038,7 +1029,7 @@ public class KubernetesHelper {
 					"this does not matter", Lists.newArrayList("this does not matter"), false);
 			facade.execute(commandHandler, Lists.newArrayList(0));
 		} else {
-			JobData jobData = readJobData();
+			K8sJobData jobData = readJobData();
 			
 			List<Action> actions = jobData.getActions();
 			
@@ -1093,7 +1084,7 @@ public class KubernetesHelper {
 	public static void checkoutCode(String serverUrl, String jobToken, String positionStr, 
 			boolean withLfs, boolean withSubmodules, int cloneDepth, CloneInfo cloneInfo, 
 			@Nullable String checkoutPath) throws IOException {
-		JobData jobData = readJobData();
+		K8sJobData jobData = readJobData();
 		
 		logger.info("Checking out code from {}...", cloneInfo.getCloneUrl());
 
@@ -1146,14 +1137,14 @@ public class KubernetesHelper {
 	
 	public static void runServerStep(String serverUrl, String jobToken, String positionStr, 
 			String encodedIncludeFiles, String encodedExcludeFiles, String encodedPlaceholders, 
-			@Nullable String encodedSourcePath) {
+			@Nullable String encodedBasePath) {
 		installJVMCert();
 
 		List<Integer> position = parseStepPosition(positionStr);
-		String sourcePath = null;
-		if (encodedSourcePath != null) {
-			sourcePath = new String(Base64.getDecoder().decode(
-					encodedSourcePath.getBytes(StandardCharsets.UTF_8)), StandardCharsets.UTF_8);
+		String basePath = null;
+		if (encodedBasePath != null) {
+			basePath = new String(Base64.getDecoder().decode(
+					encodedBasePath.getBytes(StandardCharsets.UTF_8)), StandardCharsets.UTF_8);
 		}
 		Collection<String> includeFiles = decodeCommandArgAsCollection(encodedIncludeFiles);
 		Collection<String> excludeFiles = decodeCommandArgAsCollection(encodedExcludeFiles);
@@ -1167,13 +1158,37 @@ public class KubernetesHelper {
 			}
 			
 		};
-		runServerSideStep(serverUrl, jobToken, position, sourcePath, includeFiles, excludeFiles, 
+		runServerStep(serverUrl, jobToken, position, basePath, includeFiles, excludeFiles, 
 				placeholders, getBuildHome(), logger);
 	}
 
-	public static void runServerSideStep(String serverUrl, String jobToken, List<Integer> position, 
-			@Nullable String sourcePath, Collection<String> includeFiles, Collection<String> excludeFiles, 
+	public static void runServerStep(String serverUrl, String jobToken, List<Integer> position, 
+			@Nullable String basePath, Collection<String> includeFiles, Collection<String> excludeFiles, 
 			Collection<String> placeholders, File buildHome, TaskLogger logger) {
+		Map<String, String> placeholderValues = readPlaceholderValues(buildHome, placeholders);
+		File baseDir = new File(buildHome, "workspace");
+		if (basePath != null) 
+			baseDir = new File(baseDir, replacePlaceholders(basePath, placeholderValues));
+		
+		includeFiles = replacePlaceholders(includeFiles, placeholderValues); 
+		excludeFiles = replacePlaceholders(excludeFiles, placeholderValues); 
+		
+		Map<String, byte[]> files = runServerStep(serverUrl, jobToken, position, baseDir, 
+				includeFiles, excludeFiles, placeholderValues, logger);
+		for (Map.Entry<String, byte[]> entry: files.entrySet()) {
+			try {
+				FileUtils.writeByteArrayToFile(
+						new File(buildHome, entry.getKey()), 
+						entry.getValue());
+			} catch (IOException e) {
+				throw new RuntimeException(e);
+			}
+		}
+	}
+	
+	public static Map<String, byte[]> runServerStep(String serverUrl, String jobToken, List<Integer> position, 
+			File baseDir, Collection<String> includeFiles, Collection<String> excludeFiles, 
+			Map<String, String> placeholderValues, TaskLogger logger) {
 		Client client = ClientBuilder.newClient();
 		client.property(ClientProperties.REQUEST_ENTITY_PROCESSING, "CHUNKED");
 		try {
@@ -1181,12 +1196,10 @@ public class KubernetesHelper {
 			Invocation.Builder builder =  target.request();
 			builder.header(HttpHeaders.AUTHORIZATION, BEARER + " " + jobToken);
 			
-			Map<String, String> placeholderValues = readPlaceholderValues(buildHome, placeholders);
-
 			StreamingOutput os = new StreamingOutput() {
 
 				@Override
-			   public void write(OutputStream os) throws IOException {
+				public void write(OutputStream os) throws IOException {
 					writeInt(os, position.size());
 					for (int each: position) 
 						writeInt(os, each);
@@ -1197,14 +1210,7 @@ public class KubernetesHelper {
 						writeString(os, entry.getValue());
 					}
 					
-					File sourceDir = new File(buildHome, "workspace");
-					if (sourcePath != null) 
-						sourceDir = new File(sourceDir, replacePlaceholders(sourcePath, placeholderValues));
-					FileUtils.tar(
-							sourceDir, 
-							replacePlaceholders(includeFiles, placeholderValues), 
-							replacePlaceholders(excludeFiles, placeholderValues), 
-							os, false);
+					FileUtils.tar(baseDir, includeFiles, excludeFiles, os, false);
 			   }				   
 			   
 			};
@@ -1217,16 +1223,7 @@ public class KubernetesHelper {
 					}
 					byte[] bytes = new byte[readInt(is)];
 					IOUtils.readFully(is, bytes);
-					Map<String, byte[]> files = SerializationUtils.deserialize(bytes);
-					for (Map.Entry<String, byte[]> entry: files.entrySet()) {
-						try {
-							FileUtils.writeByteArrayToFile(
-									new File(buildHome, entry.getKey()), 
-									entry.getValue());
-						} catch (IOException e) {
-							throw new RuntimeException(e);
-						}
-					}
+					return SerializationUtils.deserialize(bytes);
 				} catch (IOException e) {
 					throw new RuntimeException(e);
 				} 
@@ -1257,6 +1254,43 @@ public class KubernetesHelper {
 			}
 		}
 		return placeholderValues;
+	}
+
+	public static Map<CacheInstance, String> allocateCaches(String serverUrl, 
+			String jobToken, CacheAllocationRequest request) {
+		Client client = ClientBuilder.newClient();
+		try {
+			WebTarget target = client.target(serverUrl).path("api/k8s/allocate-caches");
+			Invocation.Builder builder =  target.request();
+			builder.header(HttpHeaders.AUTHORIZATION, BEARER + " " + jobToken);
+			try (Response response = builder.post(Entity.entity(request.toString(),
+					MediaType.APPLICATION_OCTET_STREAM))) {
+				checkStatus(response);
+				return SerializationUtils.deserialize(response.readEntity(byte[].class));
+			}
+		} finally {
+			client.close();
+		}
+	}
+	
+	public static void downloadDependencies(String jobToken, String serverUrl, File targetDir) {
+		Client client = ClientBuilder.newClient();
+		try {
+			WebTarget target = client.target(serverUrl).path("api/k8s/download-dependencies");
+			Invocation.Builder builder =  target.request();
+			builder.header(HttpHeaders.AUTHORIZATION, BEARER + " " + jobToken);
+			
+			try (Response response = builder.get()){
+				checkStatus(response);
+				try (InputStream is = response.readEntity(InputStream.class)) {
+					FileUtils.untar(is, targetDir, false);
+				} catch (IOException e) {
+					throw new RuntimeException(e);
+				}
+			}
+		} finally {
+			client.close();
+		}
 	}
 	
 	public static String replacePlaceholders(String string, Map<String, String> placeholderValues) {
