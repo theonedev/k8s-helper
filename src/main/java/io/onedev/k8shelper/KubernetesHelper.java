@@ -476,8 +476,6 @@ public class KubernetesHelper {
 							if (SystemUtils.IS_OS_WINDOWS) {
 								if (buildImageFacade.getDockerfile() != null)
 									buildCommand.append("-f ").append("%workspace%\\" + buildImageFacade.getDockerfile().replace('/', '\\'));
-								else
-									buildCommand.append("-f ").append("%workspace%\\Dockerfile");
 								
 								buildCommand.append(" ");
 								
@@ -494,8 +492,6 @@ public class KubernetesHelper {
 							} else {
 								if (buildImageFacade.getDockerfile() != null)
 									buildCommand.append("-f ").append("$workspace/" + buildImageFacade.getDockerfile());
-								else
-									buildCommand.append("-f ").append("$workspace/Dockerfile");
 								
 								buildCommand.append(" ");
 								
