@@ -335,7 +335,7 @@ public class KubernetesHelper {
 				logger.info("Connecting to server '{}'...", serverUrl);
 				Client client = ClientBuilder.newClient();
 				try {
-					WebTarget target = client.target(serverUrl).path("api/k8s/test");
+					WebTarget target = client.target(serverUrl).path("~api/k8s/test");
 					Invocation.Builder builder =  target.request();
 					builder.header(HttpHeaders.AUTHORIZATION, BEARER + " " + jobToken);
 					try (Response response = builder.get()) {
@@ -355,7 +355,7 @@ public class KubernetesHelper {
 				K8sJobData jobData;
 				Client client = ClientBuilder.newClient();
 				try {
-					WebTarget target = client.target(serverUrl).path("api/k8s/job-data");
+					WebTarget target = client.target(serverUrl).path("~api/k8s/job-data");
 					Invocation.Builder builder =  target.request();
 					builder.header(HttpHeaders.AUTHORIZATION, BEARER + " " + jobToken);
 					
@@ -1188,7 +1188,7 @@ public class KubernetesHelper {
 		Client client = ClientBuilder.newClient();
 		client.property(ClientProperties.REQUEST_ENTITY_PROCESSING, "CHUNKED");
 		try {
-			WebTarget target = client.target(serverUrl).path("api/k8s/run-server-step");
+			WebTarget target = client.target(serverUrl).path("~api/k8s/run-server-step");
 			Invocation.Builder builder =  target.request();
 			builder.header(HttpHeaders.AUTHORIZATION, BEARER + " " + jobToken);
 			
@@ -1256,7 +1256,7 @@ public class KubernetesHelper {
 			String jobToken, CacheAllocationRequest request) {
 		Client client = ClientBuilder.newClient();
 		try {
-			WebTarget target = client.target(serverUrl).path("api/k8s/allocate-caches");
+			WebTarget target = client.target(serverUrl).path("~api/k8s/allocate-caches");
 			Invocation.Builder builder =  target.request();
 			builder.header(HttpHeaders.AUTHORIZATION, BEARER + " " + jobToken);
 			try (Response response = builder.post(Entity.entity(request.toString(),
@@ -1272,7 +1272,7 @@ public class KubernetesHelper {
 	public static void downloadDependencies(String jobToken, String serverUrl, File targetDir) {
 		Client client = ClientBuilder.newClient();
 		try {
-			WebTarget target = client.target(serverUrl).path("api/k8s/download-dependencies");
+			WebTarget target = client.target(serverUrl).path("~api/k8s/download-dependencies");
 			Invocation.Builder builder =  target.request();
 			builder.header(HttpHeaders.AUTHORIZATION, BEARER + " " + jobToken);
 			
