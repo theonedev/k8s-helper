@@ -26,7 +26,8 @@ public abstract class CloneInfo implements Serializable {
 		return cloneUrl;
 	}
 	
-	public abstract void writeAuthData(File homeDir, Commandline git, LineConsumer infoLogger, LineConsumer errorLogger);
+	public abstract void writeAuthData(File homeDir, Commandline git, boolean forContainer,
+									   LineConsumer infoLogger, LineConsumer errorLogger);
 	
 	public static CloneInfo fromString(String string) {
 		List<String> fields = Splitter.on("-").splitToList(string);

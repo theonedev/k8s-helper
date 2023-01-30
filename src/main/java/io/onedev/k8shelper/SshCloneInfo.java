@@ -26,7 +26,8 @@ public class SshCloneInfo extends CloneInfo {
 	}
 
 	@Override
-	public void writeAuthData(File homeDir, Commandline git, LineConsumer infoLogger, LineConsumer errorLogger) {
+	public void writeAuthData(File homeDir, Commandline git, boolean forContainer,
+							  LineConsumer infoLogger, LineConsumer errorLogger) {
 		File sshDir = new File(homeDir, ".ssh");
 		FileUtils.createDir(sshDir);
 		
@@ -46,9 +47,13 @@ public class SshCloneInfo extends CloneInfo {
 			chmod.workingDir(sshDir).addArgs("400", "id_rsa");
 			chmod.execute(infoLogger, errorLogger).checkReturnCode();
 
-			git.clearArgs();
-			git.addArgs("config", "--global", "core.sshCommand", "ssh -i \"" + privateKeyFile.getAbsolutePath() + "\" -o UserKnownHostsFile=\"" + knownHostsFile.getAbsolutePath() + "\" -F /dev/null");
-			git.execute(infoLogger, errorLogger).checkReturnCode();
+			String sshCommand = "ssh -i \"" + privateKeyFile.getAbsolutePath() + "\" -o UserKnownHostsFile=\"" + knownHostsFile.getAbsolutePath() + "\" -F /dev/null";
+			if (!forContainer) {
+				git.addArgs("config", "--global", "core.sshCommand", sshCommand);
+				git.execute(infoLogger, errorLogger).checkReturnCode();
+				git.clearArgs();
+			}
+			git.addArgs("-c", "core.sshCommand=" + sshCommand);
 		}
 	}
 

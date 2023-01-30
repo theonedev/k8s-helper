@@ -1,40 +1,15 @@
 package io.onedev.k8shelper;
 
-import static java.nio.charset.StandardCharsets.UTF_8;
-
-import java.io.ByteArrayOutputStream;
-import java.io.File;
-import java.io.IOException;
-import java.io.InputStream;
-import java.io.OutputStream;
-import java.io.StringReader;
-import java.nio.ByteBuffer;
-import java.nio.charset.Charset;
-import java.nio.charset.StandardCharsets;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Base64;
-import java.util.Collection;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Map;
-import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
-import java.util.stream.Collectors;
-
-import javax.annotation.Nullable;
-import javax.ws.rs.client.Client;
-import javax.ws.rs.client.ClientBuilder;
-import javax.ws.rs.client.Entity;
-import javax.ws.rs.client.Invocation;
-import javax.ws.rs.client.WebTarget;
-import javax.ws.rs.core.HttpHeaders;
-import javax.ws.rs.core.MediaType;
-import javax.ws.rs.core.Response;
-import javax.ws.rs.core.StreamingOutput;
-
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.google.common.base.Preconditions;
+import com.google.common.base.Splitter;
+import com.google.common.base.Throwables;
+import com.google.common.collect.Lists;
+import io.onedev.commons.utils.*;
+import io.onedev.commons.utils.command.Commandline;
+import io.onedev.commons.utils.command.ExecutionResult;
+import io.onedev.commons.utils.command.LineConsumer;
 import org.apache.commons.codec.DecoderException;
 import org.apache.commons.codec.binary.Hex;
 import org.apache.commons.compress.utils.IOUtils;
@@ -44,21 +19,23 @@ import org.glassfish.jersey.client.ClientProperties;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.google.common.base.Preconditions;
-import com.google.common.base.Splitter;
-import com.google.common.base.Throwables;
-import com.google.common.collect.Lists;
+import javax.annotation.Nullable;
+import javax.ws.rs.client.*;
+import javax.ws.rs.core.HttpHeaders;
+import javax.ws.rs.core.MediaType;
+import javax.ws.rs.core.Response;
+import javax.ws.rs.core.StreamingOutput;
+import java.io.*;
+import java.nio.ByteBuffer;
+import java.nio.charset.Charset;
+import java.nio.charset.StandardCharsets;
+import java.util.*;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+import java.util.stream.Collectors;
 
-import io.onedev.commons.utils.ExceptionUtils;
-import io.onedev.commons.utils.ExplicitException;
-import io.onedev.commons.utils.FileUtils;
-import io.onedev.commons.utils.StringUtils;
-import io.onedev.commons.utils.TaskLogger;
-import io.onedev.commons.utils.command.Commandline;
-import io.onedev.commons.utils.command.ExecutionResult;
-import io.onedev.commons.utils.command.LineConsumer;
+import static java.nio.charset.StandardCharsets.UTF_8;
 
 public class KubernetesHelper {
 
@@ -320,9 +297,9 @@ public class KubernetesHelper {
 		} catch (IOException e) {
 			throw new RuntimeException(e);
 		}
-		git.clearArgs();
 		git.addArgs("config", "--global", "http.sslCAInfo", certFile.getAbsolutePath());
 		git.execute(infoLogger, errorLogger).checkReturnCode();
+		git.clearArgs();
 	}
 	
 	public static void init(String serverUrl, String jobToken, boolean test) {
@@ -606,10 +583,11 @@ public class KubernetesHelper {
 		} 
 	}
 
-	public static void cloneRepository(Commandline git, String cloneUrl, String remoteUrl, 
-			String refName, String commitHash, boolean withLfs, boolean withSubmodules, 
-			int cloneDepth, LineConsumer infoLogger, LineConsumer errorLogger) {
-		git.clearArgs();
+	public static void cloneRepository(Commandline git, String cloneUrl,
+									   String remoteUrl, String refName, String commitHash,
+									   boolean withLfs, boolean withSubmodules, int cloneDepth,
+									   LineConsumer infoLogger, LineConsumer errorLogger) {
+		List<String> initialArgs = new ArrayList<>(git.arguments());
 		if (!new File(git.workingDir(), ".git").exists()) {
 			git.addArgs("init", ".");
 			git.execute(new LineConsumer() {
@@ -619,7 +597,7 @@ public class KubernetesHelper {
 					if (!line.startsWith("Initialized empty Git repository"))
 						infoLogger.consume(line);
 				}
-				
+
 			}, new LineConsumer() {
 
 				@Override
@@ -627,34 +605,34 @@ public class KubernetesHelper {
 					if (!line.startsWith("hint:"))
 						errorLogger.consume(line);
 				}
-				
+
 			}).checkReturnCode();
-		}								
-		
-		git.clearArgs();
+		}
+
+		git.arguments(initialArgs);
 		git.addArgs("fetch", cloneUrl, "--force", "--quiet");
 		if (cloneDepth != 0)
 			git.addArgs("--depth=" + cloneDepth);
 		git.addArgs(commitHash);
 		git.execute(infoLogger, errorLogger).checkReturnCode();
-		
+
 		AtomicBoolean originExists = new AtomicBoolean(false);
-		git.clearArgs();
+		git.arguments(initialArgs);
 		git.addArgs("remote", "add", "origin", remoteUrl);
 		ExecutionResult result = git.execute(infoLogger, new LineConsumer() {
 
 			@Override
 			public void consume(String line) {
-				if (line.contains("remote origin already exists")) 
+				if (line.contains("remote origin already exists"))
 					originExists.set(true);
-				else 
+				else
 					errorLogger.consume(line);
 			}
-			
+
 		});
-		
+
 		if (originExists.get()) {
-			git.clearArgs();
+			git.arguments(initialArgs);
 			git.addArgs("remote", "set-url", "origin", remoteUrl);
 			result = git.execute(infoLogger, new LineConsumer() {
 
@@ -662,24 +640,24 @@ public class KubernetesHelper {
 				public void consume(String line) {
 					errorLogger.consume(line);
 				}
-				
+
 			});
 		}
-		
+
 		result.checkReturnCode();
-		
+
 		if (withLfs) {
 			if (SystemUtils.IS_OS_MAC_OSX) {
 				String path = System.getenv("PATH") + ":/usr/local/bin";
 				git.environments().put("PATH", path);
 			}
-			
-			git.clearArgs();
+
+			git.arguments(initialArgs);
 			git.addArgs("lfs", "install");
 			git.execute(infoLogger, errorLogger).checkReturnCode();
 		}
-		
-		git.clearArgs();
+
+		git.arguments(initialArgs);
 		git.addArgs("checkout", "--quiet", commitHash);
 		git.execute(infoLogger, new LineConsumer() {
 
@@ -690,31 +668,31 @@ public class KubernetesHelper {
 				else
 					errorLogger.consume(line);
 			}
-			
+
 		}).checkReturnCode();
 
 		if (withSubmodules && new File(git.workingDir(), ".gitmodules").exists()) {
 			// deinit submodules in case submodule url is changed
-			git.clearArgs();
+			git.arguments(initialArgs);
 			git.addArgs("submodule", "deinit", "--all", "--force", "--quiet");
 			git.execute(infoLogger, new LineConsumer() {
 
 				@Override
 				public void consume(String line) {
-					if (!line.contains("error: could not lock config file") && 
+					if (!line.contains("error: could not lock config file") &&
 							!line.contains("warning: Could not unset core.worktree setting in submodule")) {
 						errorLogger.consume(line);
 					}
 				}
-				
+
 			}).checkReturnCode();
-			
+
 			infoLogger.consume("Retrieving submodules...");
-			
-			git.clearArgs();
+
+			git.arguments(initialArgs);
 			git.addArgs("submodule", "update", "--init", "--recursive", "--force", "--quiet");
 			if (cloneDepth != 0)
-				git.addArgs("--depth=" + cloneDepth);						
+				git.addArgs("--depth=" + cloneDepth);
 			git.execute(infoLogger, new LineConsumer() {
 
 				@Override
@@ -727,38 +705,40 @@ public class KubernetesHelper {
 						errorLogger.consume(line);
 					}
 				}
-				
+
 			}).checkReturnCode();
 		}
 
-		git.clearArgs();
+		git.arguments(initialArgs);
 		git.addArgs("update-ref", refName, commitHash);
 		git.execute(infoLogger, errorLogger).checkReturnCode();
 
 		if (refName.startsWith("refs/heads/")) {
 			String branch = refName.substring("refs/heads/".length());
-			git.clearArgs();
+			git.arguments(initialArgs);
 			git.addArgs("checkout", branch);
 			git.execute(infoLogger, new LineConsumer() {
 
 				@Override
 				public void consume(String line) {
-					if (line.contains("Switched to branch")) 
+					if (line.contains("Switched to branch"))
 						infoLogger.consume(line);
-					else 
+					else
 						errorLogger.consume(line);
 				}
-				
+
 			}).checkReturnCode();
-			
-			git.clearArgs();
+
+			git.arguments(initialArgs);
 			git.addArgs("update-ref", "refs/remotes/origin/" + branch, commitHash);
 			git.execute(infoLogger, errorLogger).checkReturnCode();
-			
-			git.clearArgs();
+
+			git.arguments(initialArgs);
 			git.addArgs("branch", "--set-upstream-to=origin/" + branch, branch);
 			git.execute(infoLogger, errorLogger).checkReturnCode();
 		}
+
+		git.arguments(initialArgs);
 	}
 	
 	private static K8sJobData readJobData() {
@@ -1103,8 +1083,19 @@ public class KubernetesHelper {
 		} else {
 			git.workingDir(workspace);
 		}
-		
-		cloneInfo.writeAuthData(userHome, git, infoLogger, errorLogger);
+
+		File trustCertsHome = getTrustCertsHome();
+		if (trustCertsHome.exists()) {
+			List<String> trustCertContent = new ArrayList<>();
+			for (File file: trustCertsHome.listFiles()) {
+				if (file.isFile())
+					trustCertContent.addAll(FileUtils.readLines(file, Charset.defaultCharset()));
+			}
+			installGitCert(new File(getBuildHome(), "trust-cert.pem"), trustCertContent, git,
+					infoLogger, errorLogger);
+		}
+
+		cloneInfo.writeAuthData(userHome, git, true, infoLogger, errorLogger);
 
 		// Also populate auth info into authInfoHome which will be shared 
 		// with other containers. The setup script of other contains will 
@@ -1113,19 +1104,8 @@ public class KubernetesHelper {
 		File authInfoHome = new File(userHome, "auth-info");
 		Commandline anotherGit = new Commandline("git");
 		anotherGit.environments().put("HOME", authInfoHome.getAbsolutePath());
-		cloneInfo.writeAuthData(authInfoHome, anotherGit, infoLogger, errorLogger);
-		
-		File trustCertsHome = getTrustCertsHome();
-		if (trustCertsHome.exists()) {
-			List<String> trustCertContent = new ArrayList<>();
-			for (File file: trustCertsHome.listFiles()) {
-				if (file.isFile()) 
-					trustCertContent.addAll(FileUtils.readLines(file, Charset.defaultCharset()));
-			}
-			installGitCert(new File(getBuildHome(), "trust-cert.pem"), trustCertContent, git, 
-					infoLogger, errorLogger);
-		}
-		
+		cloneInfo.writeAuthData(authInfoHome, anotherGit, true, infoLogger, errorLogger);
+
 		cloneRepository(git, cloneInfo.getCloneUrl(), cloneInfo.getCloneUrl(), 
 				jobData.getRefName(), jobData.getCommitHash(), withLfs, withSubmodules, cloneDepth, 
 				infoLogger, errorLogger);

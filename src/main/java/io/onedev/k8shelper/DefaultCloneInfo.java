@@ -21,11 +21,12 @@ public class DefaultCloneInfo extends CloneInfo {
 	}
 
 	@Override
-	public void writeAuthData(File homeDir, Commandline git, LineConsumer infoLogger, LineConsumer errorLogger) {
-		git.clearArgs();
+	public void writeAuthData(File homeDir, Commandline git, boolean forContainer,
+							  LineConsumer infoLogger, LineConsumer errorLogger) {
 		String extraHeader = HttpHeaders.AUTHORIZATION + ": " + KubernetesHelper.BEARER + " " + jobToken;
 		git.addArgs("config", "--global", "http.extraHeader", extraHeader);
 		git.execute(infoLogger, errorLogger).checkReturnCode();
+		git.clearArgs();
 	}
 
 	@Override
