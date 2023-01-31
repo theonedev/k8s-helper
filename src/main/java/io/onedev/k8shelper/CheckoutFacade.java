@@ -6,7 +6,10 @@ import javax.annotation.Nullable;
 
 import io.onedev.commons.utils.ExplicitException;
 import io.onedev.commons.utils.FileUtils;
+import io.onedev.commons.utils.StringUtils;
 import io.onedev.commons.utils.command.Commandline;
+import io.onedev.commons.utils.command.LineConsumer;
+import org.apache.commons.lang3.SystemUtils;
 
 public class CheckoutFacade extends LeafFacade {
 
@@ -61,5 +64,25 @@ public class CheckoutFacade extends LeafFacade {
 			git.workingDir(workspace);
 		}
 	}
-	
+
+	public void setupSafeDirectory(Commandline git, String containerWorkspace,
+								   LineConsumer infoLogger, LineConsumer errorLogger) {
+		String containerCheckoutPath = containerWorkspace;
+		if (getCheckoutPath() != null) {
+			String normalizedCheckoutPath = StringUtils.stripStart(getCheckoutPath(), "/\\");
+			if (SystemUtils.IS_OS_WINDOWS)
+				containerCheckoutPath += "\\" + normalizedCheckoutPath;
+			else
+				containerCheckoutPath += "/" + normalizedCheckoutPath;
+		}
+		git.addArgs("config", "--global", "--add", "safe.directory", containerCheckoutPath);
+
+		// no need to check result as earlier git version may not support this option and
+		// not able to set up safe directory is not a big deal (git will prompt to set up
+		// safe directory when operate on working directory later)
+		git.execute(infoLogger, errorLogger);
+
+		git.clearArgs();
+	}
+
 }
