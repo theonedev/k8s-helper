@@ -68,13 +68,10 @@ public class CheckoutFacade extends LeafFacade {
 	public void setupSafeDirectory(Commandline git, String containerWorkspace,
 								   LineConsumer infoLogger, LineConsumer errorLogger) {
 		String containerCheckoutPath = containerWorkspace;
-		if (getCheckoutPath() != null) {
-			String normalizedCheckoutPath = StringUtils.stripStart(getCheckoutPath(), "/\\");
-			if (SystemUtils.IS_OS_WINDOWS)
-				containerCheckoutPath += "\\" + normalizedCheckoutPath;
-			else
-				containerCheckoutPath += "/" + normalizedCheckoutPath;
-		}
+		if (SystemUtils.IS_OS_WINDOWS)
+			containerCheckoutPath = containerCheckoutPath.replace('\\', '/');
+		if (getCheckoutPath() != null)
+			containerCheckoutPath += "/" + StringUtils.stripStart(getCheckoutPath(), "/\\");
 		git.addArgs("config", "--global", "--add", "safe.directory", containerCheckoutPath);
 
 		// no need to check result as earlier git version may not support this option and
