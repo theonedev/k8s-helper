@@ -86,9 +86,31 @@
 			<artifactId>jersey-media-json-jackson</artifactId>
 			<version>${jersey.version}</version>
 		</dependency>
+		<dependency>
+			<groupId>io.github.hakky54</groupId>
+			<artifactId>sslcontext-kickstart</artifactId>
+			<version>${sslcontext.version}</version>
+			<exclusions>
+				<exclusion>
+					<groupId>org.slf4j</groupId>
+					<artifactId>slf4j-api</artifactId>
+				</exclusion>
+			</exclusions>
+		</dependency>
+		<dependency>
+			<groupId>io.github.hakky54</groupId>
+			<artifactId>sslcontext-kickstart-for-pem</artifactId>
+			<version>${sslcontext.version}</version>
+		</dependency>
+		<dependency>
+			<groupId>io.github.hakky54</groupId>
+			<artifactId>sslcontext-kickstart-for-jetty</artifactId>
+			<version>${sslcontext.version}</version>
+		</dependency>
 	</dependencies>
 	<properties>
 		<commons.version>2.7.10</commons.version>
 		<jersey.version>2.26</jersey.version>
+		<sslcontext.version>7.4.9</sslcontext.version>
 	</properties>
 </project>
