@@ -10,6 +10,9 @@ import io.onedev.commons.utils.*;
 import io.onedev.commons.utils.command.Commandline;
 import io.onedev.commons.utils.command.ExecutionResult;
 import io.onedev.commons.utils.command.LineConsumer;
+import nl.altindag.ssl.SSLFactory;
+import nl.altindag.ssl.util.CertificateUtils;
+import nl.altindag.ssl.util.HostnameVerifierUtils;
 import org.apache.commons.codec.DecoderException;
 import org.apache.commons.codec.binary.Hex;
 import org.apache.commons.compress.utils.IOUtils;
@@ -20,6 +23,8 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import javax.annotation.Nullable;
+import javax.net.ssl.HostnameVerifier;
+import javax.net.ssl.SSLSession;
 import javax.ws.rs.client.*;
 import javax.ws.rs.core.HttpHeaders;
 import javax.ws.rs.core.MediaType;
@@ -27,7 +32,6 @@ import javax.ws.rs.core.Response;
 import javax.ws.rs.core.StreamingOutput;
 import java.io.*;
 import java.nio.ByteBuffer;
-import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
 import java.util.*;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -60,13 +64,13 @@ public class KubernetesHelper {
 	public static final String WORKSPACE = "workspace";
 	
 	public static final String ATTRIBUTES = "attributes";
-	
+
 	public static final String PLACEHOLDER_PREFIX = "<&onedev#";
 	
 	public static final String PLACEHOLDER_SUFFIX = "#onedev&>";
 	
 	private static final Pattern PLACEHOLDER_PATTERN = Pattern.compile(PLACEHOLDER_PREFIX + "(.*?)" + PLACEHOLDER_SUFFIX);
-	
+
 	private static final Logger logger = LoggerFactory.getLogger(KubernetesHelper.class);
 	
 	private static File getBuildHome() {
@@ -80,29 +84,23 @@ public class KubernetesHelper {
 		return new File(getBuildHome(), "job-data");
 	}
 	
-	private static File getTrustCertsHome() {
-		if (SystemUtils.IS_OS_WINDOWS) 
-			return new File("C:\\onedev-build\\trust-certs");
-		else 
-			return new File("/onedev-build/trust-certs");
+	private static File getTrustCertsDir() {
+		return new File(getBuildHome(), "trust-certs");
 	}
 	
 	private static File getCacheHome(String executorName) {
-		if (SystemUtils.IS_OS_WINDOWS) 
-			return new File("C:\\onedev-build\\cache\\" + executorName);
-		else
-			return new File("/onedev-build/cache/" + executorName);
+		return new File(new File(getBuildHome(), "cache"), executorName);
 	}
 	
 	private static File getWorkspace() {
 		return new File(getBuildHome(), WORKSPACE);
 	}
 	
-	private static File getCommandHome() {
+	private static File getCommandDir() {
 		return new File(getBuildHome(), "command");
 	}
 	
-	private static File getMarkHome() {
+	private static File getMarkDir() {
 		return new File(getBuildHome(), "mark");
 	}
 	
@@ -129,7 +127,7 @@ public class KubernetesHelper {
 			OsInfo osInfo) {
 		try {
 			String positionStr = stringifyStepPosition(position);
-			File commandHome = getCommandHome();
+			File commandHome = getCommandDir();
 			File stepScriptFile = new File(commandHome, "step-" + positionStr + commandFacade.getScriptExtension());
 			OsExecution execution = commandFacade.getExecution(osInfo);
 			FileUtils.writeLines(stepScriptFile, execution.getCommands(), commandFacade.getEndOfLine());
@@ -143,7 +141,7 @@ public class KubernetesHelper {
 				FileUtils.writeLines(setupScriptFile, setupCommands, "\r\n");
 				
 				File scriptFile = new File(commandHome, positionStr + ".bat");
-				String markPrefix = getMarkHome().getAbsolutePath() + "\\" + positionStr;
+				String markPrefix = getMarkDir().getAbsolutePath() + "\\" + positionStr;
 				List<String> scriptContent = Lists.newArrayList(
 						"@echo off",
 						"set \"initialWorkingDir=%cd%\"",
@@ -185,7 +183,7 @@ public class KubernetesHelper {
 				FileUtils.writeLines(setupScriptFile, setupCommands, "\n");
 				
 				File scriptFile = new File(commandHome, positionStr + ".sh");
-				String markPrefix = getMarkHome().getAbsolutePath() + "/" + positionStr;
+				String markPrefix = getMarkDir().getAbsolutePath() + "/" + positionStr;
 				List<String> wrapperScriptContent = Lists.newArrayList(
 						"initialWorkingDir=$(pwd)",
 						"while [ ! -f " + markPrefix + ".start ] && [ ! -f " + markPrefix + ".skip ] && [ ! -f " + markPrefix + ".error ]",
@@ -226,31 +224,7 @@ public class KubernetesHelper {
 			throw new RuntimeException(e);
 		}
 	}
-	
-	private static void installJVMCert() {
-		File trustCertsHome = getTrustCertsHome();
-		if (trustCertsHome.exists()) {
-			String keystore = System.getProperty("java.home") + "/lib/security/cacerts";
-			for (File each: trustCertsHome.listFiles()) {
-				if (each.isFile()) {
-					Commandline keytool = new Commandline("keytool");
-					keytool.addArgs("-import", "-alias", each.getName(), "-file", each.getAbsolutePath(), 
-							"-keystore", keystore, "-storePass", "changeit", "-noprompt");
-					
-					keytool.execute(newInfoLogger(), new LineConsumer() {
 
-						@Override
-						public void consume(String line) {
-							if (!line.contains("Warning: use -cacerts option to access cacerts keystore"))
-								logger.error(TaskLogger.wrapWithAnsiError(line));
-						}
-						
-					}).checkReturnCode();
-				}
-			}
-		}
-	}
-	
 	private static LineConsumer newInfoLogger() {
 		return new LineConsumer() {
 
@@ -290,24 +264,39 @@ public class KubernetesHelper {
 		return decoded;
 	}
 	
-	public static void installGitCert(File certFile, List<String> certLines, 
-			Commandline git, LineConsumer infoLogger, LineConsumer errorLogger) {
-		try {
-			FileUtils.writeLines(certFile, certLines, "\n");
-		} catch (IOException e) {
-			throw new RuntimeException(e);
+	public static void installGitCert(Commandline git, File trustCertsDir, File trustCertsFile,
+									  String sslCAInfoPath, LineConsumer infoLogger, LineConsumer errorLogger) {
+		if (trustCertsDir.exists()) {
+			List<String> certLines = new ArrayList<>();
+			for (var file: trustCertsDir.listFiles()) {
+				if (file.isFile() && !file.isHidden()) {
+					try {
+						certLines.addAll(FileUtils.readLines(file, UTF_8));
+					} catch (IOException e) {
+						throw new RuntimeException(e);
+					}
+				}
+			}
+
+			if (!certLines.isEmpty()) {
+				try {
+					FileUtils.writeLines(trustCertsFile, certLines, "\n");
+				} catch (IOException e) {
+					throw new RuntimeException(e);
+				}
+				git.addArgs("config", "--global", "http.sslCAInfo", sslCAInfoPath);
+				git.execute(infoLogger, errorLogger).checkReturnCode();
+				git.clearArgs();
+			}
 		}
-		git.addArgs("config", "--global", "http.sslCAInfo", certFile.getAbsolutePath());
-		git.execute(infoLogger, errorLogger).checkReturnCode();
-		git.clearArgs();
 	}
 	
 	public static void init(String serverUrl, String jobToken, boolean test) {
-		installJVMCert();
+		SSLFactory sslFactory = buildSSLFactory(getTrustCertsDir());
 		OsInfo osInfo = getOsInfo();
 		try {
-			FileUtils.createDir(getCommandHome());
-			FileUtils.createDir(getMarkHome());
+			FileUtils.createDir(getCommandDir());
+			FileUtils.createDir(getMarkDir());
 			if (test) {
 				logger.info("Connecting to server '{}'...", serverUrl);
 				Client client = ClientBuilder.newClient();
@@ -360,7 +349,7 @@ public class KubernetesHelper {
 
 					@Override
 					protected Map<CacheInstance, String> allocate(CacheAllocationRequest request) {
-						return allocateCaches(serverUrl, jobToken, request);
+						return allocateCaches(sslFactory, serverUrl, jobToken, request);
 					}
 
 					@Override
@@ -550,7 +539,7 @@ public class KubernetesHelper {
 				
 				logger.info("Downloading job dependencies from {}...", serverUrl);
 				
-				downloadDependencies(jobToken, serverUrl, workspace);
+				downloadDependencies(sslFactory, jobToken, serverUrl, workspace);
 				logger.info("Job workspace initialized");
 			}
 		} catch (IOException e) {
@@ -932,7 +921,7 @@ public class KubernetesHelper {
 				File file;
 				
 				File stepScriptFile = null;
-				for (File eachFile: getCommandHome().listFiles()) {
+				for (File eachFile: getCommandDir().listFiles()) {
 					if (eachFile.getName().startsWith("step-" + positionStr + ".")) {
 						stepScriptFile = eachFile;
 						break;
@@ -956,11 +945,11 @@ public class KubernetesHelper {
 					stepScript = replacePlaceholders(stepScript, getBuildHome());
 					FileUtils.writeFile(stepScriptFile, stepScript, UTF_8.name());
 					
-					file = new File(getMarkHome(), positionStr + ".start");
+					file = new File(getMarkDir(), positionStr + ".start");
 					if (!file.createNewFile()) 
 						throw new RuntimeException("Failed to create file: " + file.getAbsolutePath());
 				} catch (Exception e) {
-					file = new File(getMarkHome(), positionStr + ".error");
+					file = new File(getMarkDir(), positionStr + ".error");
 
 					ExplicitException explicitException = ExceptionUtils.find(e, ExplicitException.class);
 					String errorMessage;
@@ -975,8 +964,8 @@ public class KubernetesHelper {
 					FileUtils.writeFile(file, errorMessage, UTF_8.name());
 				}
 			
-				File successfulFile = new File(getMarkHome(), positionStr + ".successful");
-				File failedFile = new File(getMarkHome(), positionStr + ".failed");
+				File successfulFile = new File(getMarkDir(), positionStr + ".successful");
+				File failedFile = new File(getMarkDir(), positionStr + ".failed");
 				while (!successfulFile.exists() && !failedFile.exists()) {
 					try {
 						Thread.sleep(100);
@@ -989,7 +978,7 @@ public class KubernetesHelper {
 
 			@Override
 			public void skip(LeafFacade facade, List<Integer> position) {
-				File file = new File(getMarkHome(), stringifyStepPosition(position) + ".skip");
+				File file = new File(getMarkDir(), stringifyStepPosition(position) + ".skip");
 				try {
 					if (!file.createNewFile()) 
 						throw new RuntimeException("Failed to create file: " + file.getAbsolutePath());
@@ -1057,7 +1046,7 @@ public class KubernetesHelper {
 		}
 	}
 	
-	public static void checkoutCode(String serverUrl, String jobToken, String positionStr, 
+	static void checkoutCode(String serverUrl, String jobToken, String positionStr,
 			boolean withLfs, boolean withSubmodules, int cloneDepth, CloneInfo cloneInfo, 
 			@Nullable String checkoutPath) throws IOException {
 		K8sJobData jobData = readJobData();
@@ -1084,38 +1073,40 @@ public class KubernetesHelper {
 			git.workingDir(workspace);
 		}
 
-		File trustCertsHome = getTrustCertsHome();
-		if (trustCertsHome.exists()) {
-			List<String> trustCertContent = new ArrayList<>();
-			for (File file: trustCertsHome.listFiles()) {
-				if (file.isFile())
-					trustCertContent.addAll(FileUtils.readLines(file, Charset.defaultCharset()));
-			}
-			installGitCert(new File(getBuildHome(), "trust-cert.pem"), trustCertContent, git,
-					infoLogger, errorLogger);
-		}
-
+		File trustCertsFile = new File(getBuildHome(), "trust-certs.pem");
+		installGitCert(git, getTrustCertsDir(), trustCertsFile,
+				trustCertsFile.getAbsolutePath(), infoLogger, errorLogger);
 		cloneInfo.writeAuthData(userHome, git, true, infoLogger, errorLogger);
 
 		// Also populate auth info into authInfoHome which will be shared 
 		// with other containers. The setup script of other contains will 
 		// move all auth data from authInfoHome into the user home so that 
 		// git pull/push can be done without asking for credentials
-		File authInfoHome = new File(userHome, "auth-info");
+		File authInfoDir = new File(userHome, "auth-info");
 		Commandline anotherGit = new Commandline("git");
-		anotherGit.environments().put("HOME", authInfoHome.getAbsolutePath());
-		cloneInfo.writeAuthData(authInfoHome, anotherGit, true, infoLogger, errorLogger);
+		anotherGit.environments().put("HOME", authInfoDir.getAbsolutePath());
+		installGitCert(anotherGit, getTrustCertsDir(), trustCertsFile,
+				trustCertsFile.getAbsolutePath(), infoLogger, errorLogger);
+		cloneInfo.writeAuthData(authInfoDir, anotherGit, true, infoLogger, errorLogger);
 
 		cloneRepository(git, cloneInfo.getCloneUrl(), cloneInfo.getCloneUrl(), 
 				jobData.getRefName(), jobData.getCommitHash(), withLfs, withSubmodules, cloneDepth, 
 				infoLogger, errorLogger);
 	}
-	
-	public static void runServerStep(String serverUrl, String jobToken, String positionStr, 
-			String encodedIncludeFiles, String encodedExcludeFiles, String encodedPlaceholders, 
-			@Nullable String encodedBasePath) {
-		installJVMCert();
 
+	static void runServerStep(String serverUrl, String jobToken,
+							  String positionStr, String encodedIncludeFiles,
+							  String encodedExcludeFiles, String encodedPlaceholders,
+							  @Nullable String encodedBasePath) {
+		runServerStep(buildSSLFactory(getTrustCertsDir()), serverUrl,
+				jobToken, positionStr, encodedIncludeFiles, encodedExcludeFiles,
+				encodedPlaceholders, encodedBasePath);
+	}
+
+	private static void runServerStep(SSLFactory sslFactory, String serverUrl, String jobToken,
+									 String positionStr, String encodedIncludeFiles,
+									 String encodedExcludeFiles, String encodedPlaceholders,
+									 @Nullable String encodedBasePath) {
 		List<Integer> position = parseStepPosition(positionStr);
 		String basePath = null;
 		if (encodedBasePath != null) {
@@ -1134,13 +1125,14 @@ public class KubernetesHelper {
 			}
 			
 		};
-		runServerStep(serverUrl, jobToken, position, basePath, includeFiles, excludeFiles, 
+		runServerStep(sslFactory, serverUrl, jobToken, position, basePath, includeFiles, excludeFiles,
 				placeholders, getBuildHome(), logger);
 	}
 
-	public static void runServerStep(String serverUrl, String jobToken, List<Integer> position, 
-			@Nullable String basePath, Collection<String> includeFiles, Collection<String> excludeFiles, 
-			Collection<String> placeholders, File buildHome, TaskLogger logger) {
+	public static void runServerStep(SSLFactory sslFactory, String serverUrl, String jobToken,
+									 List<Integer> position, @Nullable String basePath,
+									 Collection<String> includeFiles, Collection<String> excludeFiles,
+									 Collection<String> placeholders, File buildHome, TaskLogger logger) {
 		Map<String, String> placeholderValues = readPlaceholderValues(buildHome, placeholders);
 		File baseDir = new File(buildHome, "workspace");
 		if (basePath != null) 
@@ -1149,7 +1141,7 @@ public class KubernetesHelper {
 		includeFiles = replacePlaceholders(includeFiles, placeholderValues); 
 		excludeFiles = replacePlaceholders(excludeFiles, placeholderValues); 
 		
-		Map<String, byte[]> files = runServerStep(serverUrl, jobToken, position, baseDir, 
+		Map<String, byte[]> files = runServerStep(sslFactory, serverUrl, jobToken, position, baseDir,
 				includeFiles, excludeFiles, placeholderValues, logger);
 		for (Map.Entry<String, byte[]> entry: files.entrySet()) {
 			try {
@@ -1162,10 +1154,11 @@ public class KubernetesHelper {
 		}
 	}
 	
-	public static Map<String, byte[]> runServerStep(String serverUrl, String jobToken, List<Integer> position, 
-			File baseDir, Collection<String> includeFiles, Collection<String> excludeFiles, 
-			Map<String, String> placeholderValues, TaskLogger logger) {
-		Client client = ClientBuilder.newClient();
+	public static Map<String, byte[]> runServerStep(SSLFactory sslFactory, String serverUrl, String jobToken,
+													List<Integer> position, File baseDir,
+													Collection<String> includeFiles, Collection<String> excludeFiles,
+													Map<String, String> placeholderValues, TaskLogger logger) {
+		Client client = buildRestClient(sslFactory);
 		client.property(ClientProperties.REQUEST_ENTITY_PROCESSING, "CHUNKED");
 		try {
 			WebTarget target = client.target(serverUrl).path("~api/k8s/run-server-step");
@@ -1232,9 +1225,9 @@ public class KubernetesHelper {
 		return placeholderValues;
 	}
 
-	public static Map<CacheInstance, String> allocateCaches(String serverUrl, 
+	public static Map<CacheInstance, String> allocateCaches(SSLFactory sslFactory, String serverUrl,
 			String jobToken, CacheAllocationRequest request) {
-		Client client = ClientBuilder.newClient();
+		Client client = buildRestClient(sslFactory);
 		try {
 			WebTarget target = client.target(serverUrl).path("~api/k8s/allocate-caches");
 			Invocation.Builder builder =  target.request();
@@ -1249,8 +1242,9 @@ public class KubernetesHelper {
 		}
 	}
 	
-	public static void downloadDependencies(String jobToken, String serverUrl, File targetDir) {
-		Client client = ClientBuilder.newClient();
+	public static void downloadDependencies(SSLFactory sslFactory, String jobToken,
+											String serverUrl, File targetDir) {
+		Client client = buildRestClient(sslFactory);
 		try {
 			WebTarget target = client.target(serverUrl).path("~api/k8s/download-dependencies");
 			Invocation.Builder builder =  target.request();
@@ -1311,5 +1305,44 @@ public class KubernetesHelper {
 			replacedCollection.add(replacePlaceholders(each, buildHome));
 		return replacedCollection;
 	}
-	
+
+	public static SSLFactory buildSSLFactory(File trustCertsDir) {
+		SSLFactory.Builder builder = SSLFactory.builder().withDefaultTrustMaterial();
+		if (trustCertsDir.exists()) {
+			for (var file: trustCertsDir.listFiles()) {
+				if (file.isFile() && !file.isHidden()) {
+					String certContent = null;
+					try {
+						certContent = org.apache.commons.io.FileUtils.readFileToString(file, UTF_8);
+					} catch (IOException e) {
+						throw new RuntimeException(e);
+					}
+					var certificates = CertificateUtils.parsePemCertificate(certContent);
+					if (!certificates.isEmpty()) {
+						builder.withTrustMaterial(certificates);
+					} else {
+						throw new ExplicitException("PEM formatted certificate beginning with -----BEGIN CERTIFICATE----- and ending with -----END CERTIFICATE----- is expected: " + file.getAbsolutePath());
+					}
+				}
+			}
+
+			HostnameVerifier basicVerifier = HostnameVerifierUtils.createBasic();
+			HostnameVerifier fenixVerifier = HostnameVerifierUtils.createFenix();
+			builder.withHostnameVerifier(new HostnameVerifier() {
+				@Override
+				public boolean verify(String hostname, SSLSession session) {
+					return basicVerifier.verify(hostname, session) || fenixVerifier.verify(hostname, session);
+				}
+
+			});
+		}
+		return builder.build();
+	}
+
+	public static Client buildRestClient(SSLFactory sslFactory) {
+		return ClientBuilder.newBuilder()
+				.sslContext(sslFactory.getSslContext())
+				.hostnameVerifier(sslFactory.getHostnameVerifier())
+				.build();
+	}
 }

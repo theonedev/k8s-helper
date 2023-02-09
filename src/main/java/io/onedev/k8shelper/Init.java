@@ -1,5 +1,6 @@
 package io.onedev.k8shelper;
 
+import nl.altindag.ssl.SSLFactory;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
