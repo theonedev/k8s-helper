@@ -1321,7 +1321,7 @@ public class KubernetesHelper {
 					if (!certificates.isEmpty()) {
 						builder.withTrustMaterial(certificates);
 					} else {
-						throw new ExplicitException("PEM formatted certificate beginning with -----BEGIN CERTIFICATE----- and ending with -----END CERTIFICATE----- is expected: " + file.getAbsolutePath());
+						throw new ExplicitException("Base64 encoded PEM certificate beginning with -----BEGIN CERTIFICATE----- and ending with -----END CERTIFICATE----- is expected: " + file.getAbsolutePath());
 					}
 				}
 			}
