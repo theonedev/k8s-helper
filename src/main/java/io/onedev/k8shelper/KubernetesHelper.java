@@ -52,7 +52,9 @@ public class KubernetesHelper {
 	public static final String ENV_OS_INFO = "ONEDEV_OS_INFO";
 	
 	public static final String ENV_REGISTRY_LOGINS = "ONEDEV_REGISTRY_LOGINS";
-	
+
+	public static final String AUTHORIZATION = "OneDevAuthorization";
+
 	public static final String BEARER = "Bearer";
 	
 	public static final String LOG_END_MESSAGE = "===== End of OneDev K8s Helper Log =====";

@@ -1,14 +1,11 @@
 package io.onedev.k8shelper;
 
+import io.onedev.commons.utils.command.Commandline;
+import io.onedev.commons.utils.command.LineConsumer;
+
 import java.io.File;
 import java.nio.charset.StandardCharsets;
 import java.util.Base64;
-import java.util.List;
-
-import javax.ws.rs.core.HttpHeaders;
-
-import io.onedev.commons.utils.command.Commandline;
-import io.onedev.commons.utils.command.LineConsumer;
 
 public class HttpCloneInfo extends CloneInfo {
 	
@@ -25,7 +22,9 @@ public class HttpCloneInfo extends CloneInfo {
 	@Override
 	public void writeAuthData(File homeDir, Commandline git, boolean forContainer,
 							  LineConsumer infoLogger, LineConsumer errorLogger) {
-		String extraHeader = HttpHeaders.AUTHORIZATION + ": " + KubernetesHelper.BEARER + " " + accessToken;
+		// Use onedev specific authorization header as otherwise it will fail git operations
+		// against other git servers in command step
+		String extraHeader = KubernetesHelper.AUTHORIZATION + ": " + KubernetesHelper.BEARER + " " + accessToken;
 		git.addArgs("config", "--global", "http.extraHeader", extraHeader);
 		git.execute(infoLogger, errorLogger).checkReturnCode();
 		git.clearArgs();
