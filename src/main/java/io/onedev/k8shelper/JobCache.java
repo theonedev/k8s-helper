@@ -42,7 +42,7 @@ public abstract class JobCache {
 			for (File keyDir: home.listFiles(filter)) {
 				for (File instanceDir: keyDir.listFiles(filter)) {
 					instances.put(
-							new CacheInstance(instanceDir.getName(), keyDir.getName()), 
+							new CacheInstance(keyDir.getName(), instanceDir.getName()),
 							new Date(instanceDir.lastModified()));
 				}
 			}

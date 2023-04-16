@@ -7,30 +7,30 @@ public class CacheInstance implements Serializable {
 
 	private static final long serialVersionUID = 1L;
 
-	private final String name;
-	
 	private final String cacheKey;
-	
-	public CacheInstance(String name, String cacheKey) {
-		this.name = name;
-		this.cacheKey = cacheKey;
-	}
 
-	public String getName() {
-		return name;
+	private final String cacheUUID;
+
+	public CacheInstance(String cacheKey, String cacheUUID) {
+		this.cacheKey = cacheKey;
+		this.cacheUUID = cacheUUID;
 	}
 
 	public String getCacheKey() {
 		return cacheKey;
 	}
-	
+
+	public String getCacheUUID() {
+		return cacheUUID;
+	}
+
 	public File getDirectory(File cacheHome) {
-		return new File(new File(cacheHome, cacheKey), name);
+		return new File(new File(cacheHome, cacheKey), cacheUUID);
 	}
 
 	@Override
 	public String toString() {
-		return name + "," + cacheKey;
+		return cacheKey + "," + cacheUUID;
 	}
 
 	public static CacheInstance fromString(String string) {
