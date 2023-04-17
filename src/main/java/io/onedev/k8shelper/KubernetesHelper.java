@@ -388,7 +388,7 @@ public class KubernetesHelper {
 							String link = entry.getValue();
 							// absolute path cache is local to each container, and we should set up for each container
 							if (new File(link).isAbsolute()) {
-								File linkTarget = entry.getKey().getDirectory(cacheHome);
+								File linkTarget = new File(cacheHome, entry.getKey().toString());
 								// create possible missing parent directories
 								if (SystemUtils.IS_OS_WINDOWS) { 
 									setupCommands.add(String.format("if not exist \"%s\" mkdir \"%s\"", link, link)); 

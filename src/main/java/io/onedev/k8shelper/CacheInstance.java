@@ -1,6 +1,5 @@
 package io.onedev.k8shelper;
 
-import java.io.File;
 import java.io.Serializable;
 
 public class CacheInstance implements Serializable {
@@ -24,17 +23,13 @@ public class CacheInstance implements Serializable {
 		return cacheUUID;
 	}
 
-	public File getDirectory(File cacheHome) {
-		return new File(new File(cacheHome, cacheKey), cacheUUID);
-	}
-
 	@Override
 	public String toString() {
-		return cacheKey + "," + cacheUUID;
+		return cacheKey + "/" + cacheUUID;
 	}
 
 	public static CacheInstance fromString(String string) {
-		int index = string.indexOf(',');
+		int index = string.indexOf('/');
 		return new CacheInstance(string.substring(0, index), string.substring(index+1));
 	}
 	

@@ -1,5 +1,10 @@
 package io.onedev.k8shelper;
 
+import com.google.common.base.Preconditions;
+import io.onedev.commons.utils.ExplicitException;
+import io.onedev.commons.utils.FileUtils;
+import io.onedev.commons.utils.PathUtils;
+
 import java.io.File;
 import java.io.FileFilter;
 import java.io.IOException;
@@ -8,12 +13,6 @@ import java.util.Date;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.Map;
-
-import com.google.common.base.Preconditions;
-
-import io.onedev.commons.utils.ExplicitException;
-import io.onedev.commons.utils.FileUtils;
-import io.onedev.commons.utils.PathUtils;
 
 public abstract class JobCache {
 
@@ -55,7 +54,7 @@ public abstract class JobCache {
 		 
 		for (Iterator<Map.Entry<CacheInstance, String>> it = allocations.entrySet().iterator(); it.hasNext();) {
 			Map.Entry<CacheInstance, String> entry = it.next();
-			File cacheDirectory = entry.getKey().getDirectory(home);
+			File cacheDirectory = new File(home, entry.getKey().toString());
 			if (entry.getValue() != null) {
 				if (PathUtils.isCurrent(entry.getValue()))
 					throw new ExplicitException("Invalid cache path: " + entry.getValue());
@@ -85,7 +84,7 @@ public abstract class JobCache {
 	public void installSymbolinks(File workspace) {
 		for (Map.Entry<CacheInstance, String> entry: allocations.entrySet()) {
 			if (!new File(entry.getValue()).isAbsolute()) {
-				File target = entry.getKey().getDirectory(home);
+				File target = new File(home, entry.getKey().toString());
 				File link = new File(workspace, entry.getValue());
 				if (link.exists())
 					FileUtils.deleteDir(link);
@@ -114,5 +113,5 @@ public abstract class JobCache {
 	protected abstract Map<CacheInstance, String> allocate(CacheAllocationRequest request);
 	
 	protected abstract void delete(File cacheDir);
-	
+
 }
