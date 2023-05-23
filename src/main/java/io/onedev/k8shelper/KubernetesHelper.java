@@ -39,6 +39,7 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
+import static io.onedev.commons.utils.StringUtils.parseQuoteTokens;
 import static java.nio.charset.StandardCharsets.UTF_8;
 
 public class KubernetesHelper {
@@ -415,10 +416,19 @@ public class KubernetesHelper {
 							
 							StringBuilder buildCommand = new StringBuilder("docker build ");
 							
-							String[] parsedTags = StringUtils.parseQuoteTokens(buildImageFacade.getTags());
+							String[] parsedTags = parseQuoteTokens(buildImageFacade.getTags());
 							for (String tag: parsedTags) 
 								buildCommand.append("-t ").append(tag).append(" ");
-							
+
+							if (buildImageFacade.getMoreOptions() != null) {
+								for (var option: parseQuoteTokens(buildImageFacade.getMoreOptions())) {
+									if (option.indexOf(' ') != -1)
+										buildCommand.append("\"").append(option).append("\" ");
+									else
+										buildCommand.append(option).append(" ");
+								}
+							}
+
 							List<String> loginCommands = new ArrayList<>();
 							try {
 								List<RegistryLoginFacade> registryLogins = SerializationUtils.deserialize(
@@ -861,7 +871,7 @@ public class KubernetesHelper {
 				List<String> effectiveCommand = new ArrayList<>();
 				List<String> parsedArgs;
 				if (args != null) 
-					parsedArgs = Arrays.asList(StringUtils.parseQuoteTokens(args));
+					parsedArgs = Arrays.asList(parseQuoteTokens(args));
 				else
 					parsedArgs = new ArrayList<>();
 				

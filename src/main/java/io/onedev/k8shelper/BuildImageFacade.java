@@ -11,13 +11,17 @@ public class BuildImageFacade extends LeafFacade {
 	private final String dockerfile;
 	
 	private final String tags;
-	
+
+	private final String moreOptions;
+
 	private final boolean publish;
-	
-	public BuildImageFacade(@Nullable String buildPath, @Nullable String dockerFile, String tags, boolean publish) {
+
+	public BuildImageFacade(@Nullable String buildPath, @Nullable String dockerFile, String tags,
+							@Nullable String moreOptions, boolean publish) {
 		this.buildPath = buildPath;
 		this.dockerfile = dockerFile;
 		this.tags = tags;
+		this.moreOptions = moreOptions;
 		this.publish = publish;
 	}
 
@@ -33,6 +37,11 @@ public class BuildImageFacade extends LeafFacade {
 
 	public String getTags() {
 		return tags;
+	}
+
+	@Nullable
+	public String getMoreOptions() {
+		return moreOptions;
 	}
 
 	public boolean isPublish() {
