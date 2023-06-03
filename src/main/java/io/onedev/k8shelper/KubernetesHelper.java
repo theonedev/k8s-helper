@@ -437,10 +437,10 @@ public class KubernetesHelper {
 									StringBuilder loginCommand = new StringBuilder("echo ");
 									loginCommand.append(login.getPassword()).append("|docker login -u ");
 									loginCommand.append(login.getUserName()).append(" --password-stdin");
-									if (SystemUtils.IS_OS_WINDOWS)
-										loginCommand.append("|| exit /b 1");
 									if (login.getRegistryUrl() != null)
 										loginCommand.append(" ").append(login.getRegistryUrl());
+									if (SystemUtils.IS_OS_WINDOWS)
+										loginCommand.append("|| exit /b 1");
 									loginCommands.add(loginCommand.toString());
 								}
 							} catch (DecoderException e) {
