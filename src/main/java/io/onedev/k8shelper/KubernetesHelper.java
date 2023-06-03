@@ -436,7 +436,9 @@ public class KubernetesHelper {
 								for (RegistryLoginFacade login: registryLogins) {
 									StringBuilder loginCommand = new StringBuilder("echo ");
 									loginCommand.append(login.getPassword()).append("|docker login -u ");
-									loginCommand.append(login.getUserName()).append(" --password-stdin || exit /b 1");
+									loginCommand.append(login.getUserName()).append(" --password-stdin");
+									if (SystemUtils.IS_OS_WINDOWS)
+										loginCommand.append("|| exit /b 1");
 									if (login.getRegistryUrl() != null)
 										loginCommand.append(" ").append(login.getRegistryUrl());
 									loginCommands.add(loginCommand.toString());
