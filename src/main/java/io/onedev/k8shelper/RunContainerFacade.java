@@ -16,15 +16,18 @@ public class RunContainerFacade extends LeafFacade {
 	private final List<OsContainer> containers;
 	
 	private final boolean useTTY;
+
+	private final boolean kaniko;
 	
-	public RunContainerFacade(List<OsContainer> containers, boolean useTTY) {
+	public RunContainerFacade(List<OsContainer> containers, boolean useTTY, boolean kaniko) {
 		this.containers = containers;
 		this.useTTY = useTTY;
+		this.kaniko = kaniko;
 	}
 
 	public RunContainerFacade(String image, @Nullable String args, Map<String, String> envMap, 
-			@Nullable String workingDir, Map<String, String> volumeMounts, boolean useTTY) {
-		this(Lists.newArrayList(new OsContainer(OsMatcher.ALL, image, args, envMap, workingDir, volumeMounts)), useTTY);
+			@Nullable String workingDir, Map<String, String> volumeMounts, boolean useTTY, boolean kaniko) {
+		this(Lists.newArrayList(new OsContainer(OsMatcher.ALL, image, args, envMap, workingDir, volumeMounts)), useTTY, kaniko);
 	}
 	
 	public List<OsContainer> getContainers() {
@@ -42,5 +45,8 @@ public class RunContainerFacade extends LeafFacade {
 	public boolean isUseTTY() {
 		return useTTY;
 	}
-	
+
+	public boolean isKaniko() {
+		return kaniko;
+	}
 }

@@ -14,15 +14,12 @@ public class BuildImageFacade extends LeafFacade {
 
 	private final String moreOptions;
 
-	private final boolean publish;
-
 	public BuildImageFacade(@Nullable String buildPath, @Nullable String dockerFile, String tags,
-							@Nullable String moreOptions, boolean publish) {
+							@Nullable String moreOptions) {
 		this.buildPath = buildPath;
 		this.dockerfile = dockerFile;
 		this.tags = tags;
 		this.moreOptions = moreOptions;
-		this.publish = publish;
 	}
 
 	@Nullable
@@ -42,10 +39,6 @@ public class BuildImageFacade extends LeafFacade {
 	@Nullable
 	public String getMoreOptions() {
 		return moreOptions;
-	}
-
-	public boolean isPublish() {
-		return publish;
 	}
 
 }

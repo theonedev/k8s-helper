@@ -41,6 +41,7 @@ import java.util.stream.Collectors;
 
 import static io.onedev.commons.utils.StringUtils.parseQuoteTokens;
 import static java.nio.charset.StandardCharsets.UTF_8;
+import static java.util.Base64.getEncoder;
 
 public class KubernetesHelper {
 
@@ -51,8 +52,6 @@ public class KubernetesHelper {
 	public static final String ENV_JOB_TOKEN = "ONEDEV_JOB_TOKEN";
 	
 	public static final String ENV_OS_INFO = "ONEDEV_OS_INFO";
-	
-	public static final String ENV_REGISTRY_LOGINS = "ONEDEV_REGISTRY_LOGINS";
 
 	public static final String AUTHORIZATION = "OneDevAuthorization";
 
@@ -253,7 +252,7 @@ public class KubernetesHelper {
 	public static String encodeAsCommandArg(Collection<String> list) {
 		Collection<String> base64 = new ArrayList<>();
 		for (String each: list) 
-			base64.add(Base64.getEncoder().encodeToString(each.getBytes(UTF_8)));
+			base64.add(getEncoder().encodeToString(each.getBytes(UTF_8)));
 		String commandArg = StringUtils.join(base64, "-");
 		if (commandArg.length() == 0)
 			commandArg = "-";
@@ -371,184 +370,95 @@ public class KubernetesHelper {
 				logger.info("Generating command scripts...");
 				
 				CompositeFacade entryFacade = new CompositeFacade(jobData.getActions());
-				entryFacade.traverse(new LeafVisitor<Void>() {
+				entryFacade.traverse((LeafVisitor<Void>) (facade, position) -> {
+					String stepNames = entryFacade.getNamesAsString(position);
 
-					@Override
-					public Void visit(LeafFacade facade, List<Integer> position) {
-						String stepNames = entryFacade.getNamesAsString(position);
-
-						List<String> setupCommands = new ArrayList<>();
-						if (SystemUtils.IS_OS_WINDOWS) { 
-							setupCommands.add("@echo off");							
-							setupCommands.add("xcopy /Y /S /K /Q /H /R C:\\Users\\%USERNAME%\\auth-info\\* C:\\Users\\%USERNAME% > nul");
-						} else { 
-							setupCommands.add("cp -r -f -p /root/auth-info/. /root");
-						}
-						
-						for (Map.Entry<CacheInstance, String> entry: cache.getAllocations().entrySet()) {
-							String link = entry.getValue();
-							// absolute path cache is local to each container, and we should set up for each container
-							if (new File(link).isAbsolute()) {
-								File linkTarget = new File(cacheHome, entry.getKey().toString());
-								// create possible missing parent directories
-								if (SystemUtils.IS_OS_WINDOWS) { 
-									setupCommands.add(String.format("if not exist \"%s\" mkdir \"%s\"", link, link)); 
-									setupCommands.add(String.format("rmdir /q /s \"%s\"", link));							
-									setupCommands.add(String.format("mklink /D \"%s\" \"%s\"", link, linkTarget.getAbsolutePath()));
-								} else {
-									setupCommands.add(String.format("mkdir -p \"%s\"", link)); 
-									setupCommands.add(String.format("rm -rf \"%s\"", link));
-									setupCommands.add(String.format("ln -s \"%s\" \"%s\"", linkTarget.getAbsolutePath(), link));
-								}
-							}
-						}
-						
-						String positionStr = stringifyStepPosition(position);
-
-						File workingDir = getWorkspace();
-						CommandFacade commandFacade;
-						if (facade instanceof CommandFacade) {
-							commandFacade = (CommandFacade) facade;
-						} else if (facade instanceof BuildImageFacade) {
-							BuildImageFacade buildImageFacade = (BuildImageFacade) facade;
-							
-							List<String> commands = new ArrayList<>();
-							
-							StringBuilder buildCommand = new StringBuilder("docker build ");
-							
-							String[] parsedTags = parseQuoteTokens(buildImageFacade.getTags());
-							for (String tag: parsedTags) 
-								buildCommand.append("-t ").append(tag).append(" ");
-
-							if (buildImageFacade.getMoreOptions() != null) {
-								for (var option: parseQuoteTokens(buildImageFacade.getMoreOptions())) {
-									if (option.indexOf(' ') != -1)
-										buildCommand.append("\"").append(option).append("\" ");
-									else
-										buildCommand.append(option).append(" ");
-								}
-							}
-
-							List<String> loginCommands = new ArrayList<>();
-							try {
-								List<RegistryLoginFacade> registryLogins = SerializationUtils.deserialize(
-										Hex.decodeHex(System.getenv(ENV_REGISTRY_LOGINS).toCharArray()));
-								for (RegistryLoginFacade login: registryLogins) {
-									StringBuilder loginCommand = new StringBuilder("echo ");
-									loginCommand.append(login.getPassword()).append("|docker login -u ");
-									loginCommand.append(login.getUserName()).append(" --password-stdin");
-									if (login.getRegistryUrl() != null)
-										loginCommand.append(" ").append(login.getRegistryUrl());
-									if (SystemUtils.IS_OS_WINDOWS)
-										loginCommand.append("|| exit /b 1");
-									loginCommands.add(loginCommand.toString());
-								}
-							} catch (DecoderException e) {
-								throw new RuntimeException(e);
-							}
-							
-							if (buildImageFacade.getDockerfile() != null && buildImageFacade.getDockerfile().contains(".."))
-								throw new ExplicitException("Dockerfile path should not contain '..'");
-							
-							if (buildImageFacade.getBuildPath() != null && buildImageFacade.getBuildPath().contains(".."))
-								throw new ExplicitException("Docker build path should not contain '..'");
-							
-							if (SystemUtils.IS_OS_WINDOWS) {
-								if (buildImageFacade.getDockerfile() != null)
-									buildCommand.append("-f ").append("%workspace%\\" + buildImageFacade.getDockerfile().replace('/', '\\'));
-								
-								buildCommand.append(" ");
-								
-								if (buildImageFacade.getBuildPath() != null)
-									buildCommand.append("%workspace%\\" + buildImageFacade.getBuildPath().replace('/', '\\'));
-								else
-									buildCommand.append("%workspace%");
-								
-								buildCommand.append(" || exit /b 1");
-								
-								commands.add("@echo off");
-								commands.addAll(loginCommands);
-								commands.add("set workspace=%cd%");
-							} else {
-								if (buildImageFacade.getDockerfile() != null)
-									buildCommand.append("-f ").append("$workspace/" + buildImageFacade.getDockerfile());
-								
-								buildCommand.append(" ");
-								
-								if (buildImageFacade.getBuildPath() != null)
-									buildCommand.append("$workspace/" + buildImageFacade.getBuildPath());
-								else
-									buildCommand.append("$workspace");
-								
-								commands.add("set -e");
-								commands.addAll(loginCommands);
-								commands.add("workspace=$(pwd)");
-							}
-							
-							commands.add(buildCommand.toString());
-							
-							if (buildImageFacade.isPublish()) {
-								for (String tag: parsedTags)  
-									commands.add("docker push " + tag);
-							}
-							
-							commandFacade = new CommandFacade("any", commands, true);
-						} else if (facade instanceof RunContainerFacade) {
-							RunContainerFacade containerFacade = (RunContainerFacade) facade;
-							OsContainer container = containerFacade.getContainer(osInfo);
-							if (container.getWorkingDir() != null) {
-								if (container.getWorkingDir().contains(".."))
-									throw new ExplicitException("Container working dir should not container '..'");
-								workingDir = new File(container.getWorkingDir());
-							} else {
-								workingDir = null;
-							}
-							// We will inspect container image and populate appropriate commands in sidecar as 
-							// container images are not pulled at init stage
-							commandFacade = new CommandFacade("any", Lists.newArrayList(), true);
-						} else {
-							String command;
-							String classPath;
-							if (SystemUtils.IS_OS_WINDOWS) 
-								classPath = "C:\\k8s-helper\\*";
-							else 
-								classPath = "/k8s-helper/*";
-							if (facade instanceof CheckoutFacade) {
-								CheckoutFacade checkoutFacade = (CheckoutFacade) facade;
-								command = String.format("java -classpath \"%s\" io.onedev.k8shelper.CheckoutCode %s %b %b %d %s", 
-										classPath, positionStr, checkoutFacade.isWithLfs(), checkoutFacade.isWithSubmodules(), 
-										checkoutFacade.getCloneDepth(), checkoutFacade.getCloneInfo().toString());
-								if (checkoutFacade.getCheckoutPath() != null) {
-									byte[] bytes = checkoutFacade.getCheckoutPath().getBytes(StandardCharsets.UTF_8);
-									command += " " + Base64.getEncoder().encodeToString(bytes);
-								}
-							} else {
-								ServerSideFacade serverSideFacade = (ServerSideFacade) facade;
-								
-								String includeFiles = encodeAsCommandArg(serverSideFacade.getIncludeFiles());
-								String excludeFiles = encodeAsCommandArg(serverSideFacade.getExcludeFiles());
-								String placeholders = encodeAsCommandArg(serverSideFacade.getPlaceholders());
-								command = String.format("java -classpath \"%s\" io.onedev.k8shelper.RunServerSideStep %s %s %s %s", 
-										classPath, positionStr, includeFiles, excludeFiles, placeholders);
-								if (serverSideFacade.getSourcePath() != null) {
-									byte[] bytes = serverSideFacade.getSourcePath().getBytes(StandardCharsets.UTF_8);
-									command += " " + Base64.getEncoder().encodeToString(bytes);
-								}
-							}							
-							
-							List<String> commands = new ArrayList<>();
-							if (SystemUtils.IS_OS_WINDOWS)
-								commands.add("@echo off");
-							commands.add(command);
-							
-							commandFacade = new CommandFacade("any", commands, true);
-						} 
-						
-						generateCommandScript(position, stepNames, setupCommands, commandFacade, workingDir, osInfo);
-						
-						return null;
+					List<String> setupCommands = new ArrayList<>();
+					if (SystemUtils.IS_OS_WINDOWS) {
+						setupCommands.add("@echo off");
+						setupCommands.add("xcopy /Y /S /K /Q /H /R C:\\Users\\%USERNAME%\\auth-info\\* C:\\Users\\%USERNAME% > nul");
+					} else {
+						setupCommands.add("cp -r -f -p /root/auth-info/. /root");
 					}
-					
+
+					for (Map.Entry<CacheInstance, String> entry: cache.getAllocations().entrySet()) {
+						String link = entry.getValue();
+						// absolute path cache is local to each container, and we should set up for each container
+						if (new File(link).isAbsolute()) {
+							File linkTarget = new File(cacheHome, entry.getKey().toString());
+							// create possible missing parent directories
+							if (SystemUtils.IS_OS_WINDOWS) {
+								setupCommands.add(String.format("if not exist \"%s\" mkdir \"%s\"", link, link));
+								setupCommands.add(String.format("rmdir /q /s \"%s\"", link));
+								setupCommands.add(String.format("mklink /D \"%s\" \"%s\"", link, linkTarget.getAbsolutePath()));
+							} else {
+								setupCommands.add(String.format("mkdir -p \"%s\"", link));
+								setupCommands.add(String.format("rm -rf \"%s\"", link));
+								setupCommands.add(String.format("ln -s \"%s\" \"%s\"", linkTarget.getAbsolutePath(), link));
+							}
+						}
+					}
+
+					String positionStr = stringifyStepPosition(position);
+
+					File workingDir = getWorkspace();
+					CommandFacade commandFacade;
+					if (facade instanceof CommandFacade) {
+						commandFacade = (CommandFacade) facade;
+					} else if (facade instanceof RunContainerFacade) {
+						RunContainerFacade containerFacade = (RunContainerFacade) facade;
+						OsContainer container = containerFacade.getContainer(osInfo);
+						if (container.getWorkingDir() != null) {
+							if (container.getWorkingDir().contains(".."))
+								throw new ExplicitException("Container working dir should not contain '..'");
+							workingDir = new File(container.getWorkingDir());
+						} else {
+							workingDir = null;
+						}
+						// We will inspect container image and populate appropriate commands in sidecar as
+						// container images are not pulled at init stage
+						commandFacade = new CommandFacade("any", Lists.newArrayList(), true);
+					} else {
+						String command;
+						String classPath;
+						if (SystemUtils.IS_OS_WINDOWS)
+							classPath = "C:\\k8s-helper\\*";
+						else
+							classPath = "/k8s-helper/*";
+						if (facade instanceof CheckoutFacade) {
+							CheckoutFacade checkoutFacade = (CheckoutFacade) facade;
+							command = String.format("java -classpath \"%s\" io.onedev.k8shelper.CheckoutCode %s %b %b %d %s",
+									classPath, positionStr, checkoutFacade.isWithLfs(), checkoutFacade.isWithSubmodules(),
+									checkoutFacade.getCloneDepth(), checkoutFacade.getCloneInfo().toString());
+							if (checkoutFacade.getCheckoutPath() != null) {
+								byte[] bytes = checkoutFacade.getCheckoutPath().getBytes(UTF_8);
+								command += " " + getEncoder().encodeToString(bytes);
+							}
+						} else {
+							ServerSideFacade serverSideFacade = (ServerSideFacade) facade;
+
+							String includeFiles = encodeAsCommandArg(serverSideFacade.getIncludeFiles());
+							String excludeFiles = encodeAsCommandArg(serverSideFacade.getExcludeFiles());
+							String placeholders = encodeAsCommandArg(serverSideFacade.getPlaceholders());
+							command = String.format("java -classpath \"%s\" io.onedev.k8shelper.RunServerSideStep %s %s %s %s",
+									classPath, positionStr, includeFiles, excludeFiles, placeholders);
+							if (serverSideFacade.getSourcePath() != null) {
+								byte[] bytes = serverSideFacade.getSourcePath().getBytes(UTF_8);
+								command += " " + getEncoder().encodeToString(bytes);
+							}
+						}
+
+						List<String> commands = new ArrayList<>();
+						if (SystemUtils.IS_OS_WINDOWS)
+							commands.add("@echo off");
+						commands.add(command);
+
+						commandFacade = new CommandFacade("any", commands, true);
+					}
+
+					generateCommandScript(position, stepNames, setupCommands, commandFacade, workingDir, osInfo);
+
+					return null;
 				}, new ArrayList<>());
 				
 				logger.info("Downloading job dependencies from {}...", serverUrl);
@@ -1359,4 +1269,5 @@ public class KubernetesHelper {
 				.hostnameVerifier(sslFactory.getHostnameVerifier())
 				.build();
 	}
+
 }
