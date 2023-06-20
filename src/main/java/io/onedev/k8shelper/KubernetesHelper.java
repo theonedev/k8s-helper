@@ -39,7 +39,6 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
-import static io.onedev.commons.utils.StringUtils.parseQuoteTokens;
 import static java.nio.charset.StandardCharsets.UTF_8;
 import static java.util.Base64.getEncoder;
 
@@ -405,19 +404,6 @@ public class KubernetesHelper {
 					CommandFacade commandFacade;
 					if (facade instanceof CommandFacade) {
 						commandFacade = (CommandFacade) facade;
-					} else if (facade instanceof RunContainerFacade) {
-						RunContainerFacade containerFacade = (RunContainerFacade) facade;
-						OsContainer container = containerFacade.getContainer(osInfo);
-						if (container.getWorkingDir() != null) {
-							if (container.getWorkingDir().contains(".."))
-								throw new ExplicitException("Container working dir should not contain '..'");
-							workingDir = new File(container.getWorkingDir());
-						} else {
-							workingDir = null;
-						}
-						// We will inspect container image and populate appropriate commands in sidecar as
-						// container images are not pulled at init stage
-						commandFacade = new CommandFacade("any", Lists.newArrayList(), true);
 					} else {
 						String command;
 						String classPath;
@@ -706,133 +692,6 @@ public class KubernetesHelper {
 		}
 	}
 
-	@Nullable
-	private static ContainerConfig getContainerConfig(String image, Commandline inspect) {
-		AtomicBoolean imageNotAvailable = new AtomicBoolean(false);
-		
-		StringBuilder builder = new StringBuilder();
-		ExecutionResult result = inspect.addArgs("image", "inspect", image).execute(new LineConsumer() {
-
-			@Override
-			public void consume(String line) {
-				builder.append(line).append("\n");
-			}
-			
-		}, new LineConsumer() {
-
-			@Override
-			public void consume(String line) {
-				if (line.startsWith("Error: No such image:") 
-						|| line.contains("[no such object:") 
-						|| line.contains("open \\\\\\\\.\\\\pipe\\\\containerd-containerd: The system cannot find the file specified")
-						|| line.contains("open //./pipe/docker_engine: The system cannot find the file specified")) {
-					imageNotAvailable.set(true);
-				} else {
-					logger.error(TaskLogger.wrapWithAnsiError(line));
-				}
-			}
-			
-		});
-		
- 		if (!imageNotAvailable.get()) {
-			result.checkReturnCode();
-		
-			try {
-				JsonNode rootNode = new ObjectMapper().readTree(new StringReader(builder.toString()));
-				for (JsonNode imageNode: rootNode) {
-					JsonNode configNode = imageNode.get("Config");
-					
-					JsonNode entrypointNode = configNode.get("Entrypoint");
-					List<String> entrypoint =  new ArrayList<>();
-					if (entrypointNode != null && !entrypointNode.isNull()) {
-						for (JsonNode elementNode: entrypointNode)
-							entrypoint.add(elementNode.asText());
-					}
-					
-					JsonNode cmdNode = configNode.get("Cmd");
-					List<String> cmd =  new ArrayList<>();
-					if (cmdNode != null && !cmdNode.isNull()) {
-						for (JsonNode elementNode: cmdNode)
-							cmd.add(elementNode.asText());
-					}
-					
-					return new ContainerConfig(entrypoint, cmd);
-				}
-			} catch (IOException e) {
-				throw new RuntimeException(e);
-			}
- 		} 
- 		return null;
-	}
-	
-	private static String getContainerRunScript(String image, @Nullable String args) {
-		while (true) {
-			Commandline inspect = new Commandline("nerdctl").addArgs("-n", "k8s.io");
-			ContainerConfig config = getContainerConfig(image, inspect);
-			if (config == null) {
-				inspect = new Commandline("docker");
-				config = getContainerConfig(image, inspect);
-			}
-			if (config == null) {
-				try {
-					Thread.sleep(1000);
-				} catch (InterruptedException e) {
-					throw new RuntimeException(e);
-				}
-			} else {
-				List<String> effectiveCommand = new ArrayList<>();
-				List<String> parsedArgs;
-				if (args != null) 
-					parsedArgs = Arrays.asList(parseQuoteTokens(args));
-				else
-					parsedArgs = new ArrayList<>();
-				
-				if (!config.getEntrypoint().isEmpty()) {
-					effectiveCommand.addAll(config.getEntrypoint());
-					if (!parsedArgs.isEmpty())
-						effectiveCommand.addAll(parsedArgs);
-					else
-						effectiveCommand.addAll(config.getCmd());
-				} else if (!parsedArgs.isEmpty()) {
-					effectiveCommand.addAll(parsedArgs);
-				} else if (!config.getCmd().isEmpty()) {
-					effectiveCommand.addAll(config.getCmd());
-				} else {
-					throw new ExplicitException("No command specified for image " + image);
-				}
-				
-				if (SystemUtils.IS_OS_WINDOWS) {
-					StringBuilder commandString = new StringBuilder("@echo off\r\n");
-					for (String element: effectiveCommand) {
-						if (element.contains(" "))
-							commandString.append("\"" + element + "\" ");
-						else
-							commandString.append(element + " ");
-					}
-					return commandString.toString().trim();
-				} else {
-					StringBuilder commandString = new StringBuilder();
-					for (String element: effectiveCommand) 
-						commandString.append("\"" + StringUtils.replace(element, "\"", "\\\"") + "\" ");
-					
-					return ""
-							+ "_sigterm() {\n"
-							+ "  kill -TERM \"$child\"\n"
-							+ "  wait \"$child\"\n"
-							+ "  exit 1\n"
-							+ "}\n"
-							+ "\n"
-							+ "trap _sigterm TERM\n"
-							+ "trap _sigterm INT\n"
-							+ "\n"
-							+ commandString.toString().trim() + "&\n"
-							+ "child=$!\n"
-							+ "wait \"$child\"";
-				}
-			}
-		}
-	}
-	
 	public static void sidecar(String serverUrl, String jobToken, boolean test) {
 		OsInfo osInfo = getOsInfo();
 		
@@ -854,14 +713,7 @@ public class KubernetesHelper {
 				Preconditions.checkState(stepScriptFile != null);
 
 				try {
-					String stepScript;
-					if (facade instanceof RunContainerFacade) {
-						RunContainerFacade rubContainerFacade = (RunContainerFacade) facade;
-						OsContainer container = rubContainerFacade.getContainer(osInfo);
-						stepScript = getContainerRunScript(container.getImage(), container.getArgs());
-					} else {
-						stepScript = FileUtils.readFileToString(stepScriptFile, UTF_8);
-					}
+					String stepScript = FileUtils.readFileToString(stepScriptFile, UTF_8);
 
 					if (facade instanceof CommandFacade) 
 						((CommandFacade) facade).generatePauseCommand(getBuildHome());
