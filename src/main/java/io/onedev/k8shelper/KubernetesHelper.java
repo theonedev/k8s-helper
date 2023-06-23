@@ -300,7 +300,7 @@ public class KubernetesHelper {
 			FileUtils.createDir(getMarkDir());
 			if (test) {
 				logger.info("Connecting to server '{}'...", serverUrl);
-				Client client = ClientBuilder.newClient();
+				Client client = buildRestClient(sslFactory);
 				try {
 					WebTarget target = client.target(serverUrl).path("~api/k8s/test");
 					Invocation.Builder builder =  target.request();
@@ -320,7 +320,7 @@ public class KubernetesHelper {
 						new CommandFacade("any", commands, true), getWorkspace(), osInfo);
 			} else {
 				K8sJobData jobData;
-				Client client = ClientBuilder.newClient();
+				Client client = buildRestClient(sslFactory);
 				try {
 					WebTarget target = client.target(serverUrl).path("~api/k8s/job-data");
 					Invocation.Builder builder =  target.request();

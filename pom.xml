@@ -10,7 +10,7 @@
 		<version>1.2.0</version>
 	</parent>
 	<artifactId>k8s-helper</artifactId>
-	<version>2.10.16</version>
+	<version>2.10.17</version>
 	<build>
 		<plugins>
 			<plugin>
