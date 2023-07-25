@@ -477,7 +477,7 @@ public class KubernetesHelper {
 						status, errorMessage));
 			} else {
 				throw new RuntimeException("Http request failed with status " + status 
-						+ ", check server log for detaiils");
+						+ ", check server log for details");
 			}
 		} 
 	}
