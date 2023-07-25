@@ -14,14 +14,17 @@ public class BuildImageFacade extends LeafFacade {
 
 	private final boolean publish;
 
+	private final boolean removeDanglingImages;
+
 	private final String moreOptions;
 
 	public BuildImageFacade(@Nullable String buildPath, @Nullable String dockerFile, String tags,
-							boolean publish, @Nullable String moreOptions) {
+							boolean publish, boolean removeDanglingImages, @Nullable String moreOptions) {
 		this.buildPath = buildPath;
 		this.dockerfile = dockerFile;
 		this.tags = tags;
 		this.publish = publish;
+		this.removeDanglingImages = removeDanglingImages;
 		this.moreOptions = moreOptions;
 	}
 
@@ -41,6 +44,10 @@ public class BuildImageFacade extends LeafFacade {
 
 	public boolean isPublish() {
 		return publish;
+	}
+
+	public boolean isRemoveDanglingImages() {
+		return removeDanglingImages;
 	}
 
 	@Nullable
