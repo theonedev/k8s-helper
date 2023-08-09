@@ -25,17 +25,12 @@ public abstract class LeafFacade implements StepFacade {
 	public static LeafFacade of(List<Action> actions, List<Integer> stepPosition) {
 		StepFacade entryExecutable = new CompositeFacade(actions);
 		
-		LeafVisitor<LeafFacade> visitor = new LeafVisitor<LeafFacade>() {
-
-			@Override
-			public LeafFacade visit(LeafFacade executable, List<Integer> position) {
-				if (position.equals(stepPosition))
-					return executable;
-				else
-					return null;
-			}
-			
-		};															
+		LeafVisitor<LeafFacade> visitor = (executable, position) -> {
+			if (position.equals(stepPosition))
+				return executable;
+			else
+				return null;
+		};
 		
 		return entryExecutable.traverse(visitor, new ArrayList<>());
 	}
