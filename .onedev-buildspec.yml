@@ -34,8 +34,10 @@ jobs:
       - ''
       - mvn deploy -Dmaven.deploy.password=@secrets:maven-deploy-password@
       - ''
-      - docker build -t 1dev/k8s-helper-linux:@build_version@ -f Dockerfile.linux .
-      - docker push 1dev/k8s-helper-linux:@build_version@
+      - docker login -u robinshen -p @secrets:dockerhub-password@
+      - docker run --privileged --rm tonistiigi/binfmt --install all
+      - export buildVersion=@build_version@
+      - ./build.sh
     useTTY: false
     condition: ALL_PREVIOUS_STEPS_WERE_SUCCESSFUL
   - !CreateTagStep
