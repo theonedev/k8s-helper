@@ -1,9 +1,7 @@
 #!/bin/bash
 set -e
 
-docker login -u robinshen -p $@
-buildVersion=$(mvn org.apache.maven.plugins:maven-help-plugin:3.2.0:evaluate -Dexpression=project.version -q -DforceStdout)
-mvn clean package
+buildVersion=`ls target/k8s-helper-*-sources.jar|sed -e 's/target\/k8s-helper-\(.*\)-sources.jar/\1/'`
 
 BUILDER="builder-$(date +%s)"
 
