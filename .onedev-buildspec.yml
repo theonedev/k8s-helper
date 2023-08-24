@@ -36,7 +36,6 @@ jobs:
       - ''
       - docker login -u robinshen -p @secrets:dockerhub-password@
       - docker run --privileged --rm tonistiigi/binfmt --install all
-      - export buildVersion=@build_version@
       - ./build.sh
     useTTY: false
     condition: ALL_PREVIOUS_STEPS_WERE_SUCCESSFUL
