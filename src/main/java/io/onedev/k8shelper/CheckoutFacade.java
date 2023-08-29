@@ -1,15 +1,14 @@
 package io.onedev.k8shelper;
 
-import java.io.File;
-
-import javax.annotation.Nullable;
-
 import io.onedev.commons.utils.ExplicitException;
 import io.onedev.commons.utils.FileUtils;
 import io.onedev.commons.utils.StringUtils;
 import io.onedev.commons.utils.command.Commandline;
 import io.onedev.commons.utils.command.LineConsumer;
 import org.apache.commons.lang3.SystemUtils;
+
+import javax.annotation.Nullable;
+import java.io.File;
 
 public class CheckoutFacade extends LeafFacade {
 
