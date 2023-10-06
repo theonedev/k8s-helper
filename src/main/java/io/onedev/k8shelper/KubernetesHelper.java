@@ -608,11 +608,11 @@ public class KubernetesHelper {
 			}).checkReturnCode();
 		}
 
-		git.arguments(initialArgs);
-		git.addArgs("update-ref", refName, commitHash);
-		git.execute(infoLogger, errorLogger).checkReturnCode();
-
 		if (refName.startsWith("refs/heads/")) {
+			git.arguments(initialArgs);
+			git.addArgs("update-ref", refName, commitHash);
+			git.execute(infoLogger, errorLogger).checkReturnCode();
+
 			String branch = refName.substring("refs/heads/".length());
 			git.arguments(initialArgs);
 			git.addArgs("checkout", branch);
