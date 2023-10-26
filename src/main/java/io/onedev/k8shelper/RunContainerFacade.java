@@ -12,19 +12,23 @@ public class RunContainerFacade extends LeafFacade {
 	private static final long serialVersionUID = 1L;
 
 	private final List<OsContainer> containers;
-	
+
+	private final String builtInRegistryAccessToken;
+
 	private final boolean useTTY;
 
-	public RunContainerFacade(List<OsContainer> containers, boolean useTTY) {
+	public RunContainerFacade(List<OsContainer> containers, @Nullable String builtInRegistryAccessToken, boolean useTTY) {
 		this.containers = containers;
+		this.builtInRegistryAccessToken = builtInRegistryAccessToken;
 		this.useTTY = useTTY;
 	}
 
 	public RunContainerFacade(String image, @Nullable String opts, @Nullable String args,
 							  Map<String, String> envMap, @Nullable String workingDir,
-							  Map<String, String> volumeMounts, boolean useTTY) {
+							  Map<String, String> volumeMounts, @Nullable String builtInRegistryAccessToken,
+							  boolean useTTY) {
 		this(Lists.newArrayList(new OsContainer(OsMatcher.ALL, image, opts, args, envMap,
-				workingDir, volumeMounts)), useTTY);
+				workingDir, volumeMounts)), builtInRegistryAccessToken, useTTY);
 	}
 	
 	public List<OsContainer> getContainers() {
@@ -38,7 +42,12 @@ public class RunContainerFacade extends LeafFacade {
 		}
 		throw new ExplicitException("This step is not applicable for os: " + osInfo);
 	}
-	
+
+	@Nullable
+	public String getBuiltInRegistryAccessToken() {
+		return builtInRegistryAccessToken;
+	}
+
 	public boolean isUseTTY() {
 		return useTTY;
 	}

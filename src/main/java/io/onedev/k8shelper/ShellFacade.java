@@ -1,10 +1,9 @@
 package io.onedev.k8shelper;
 
-import java.util.List;
+import io.onedev.commons.utils.command.Commandline;
 
 import javax.annotation.Nullable;
-
-import io.onedev.commons.utils.command.Commandline;
+import java.util.List;
 
 public class ShellFacade extends CommandFacade {
 
@@ -12,8 +11,9 @@ public class ShellFacade extends CommandFacade {
 
 	private final String shell;
 	
-	public ShellFacade(@Nullable String image, String shell, List<String> commands, boolean useTTY) {
-		super(image, commands, useTTY);
+	public ShellFacade(@Nullable String image, @Nullable String builtInRegistryAccessToken,
+					   String shell, List<String> commands, boolean useTTY) {
+		super(image, builtInRegistryAccessToken, commands, useTTY);
 		this.shell = shell;
 	}
 

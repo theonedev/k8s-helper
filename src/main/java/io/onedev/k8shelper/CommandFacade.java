@@ -1,33 +1,33 @@
 package io.onedev.k8shelper;
 
-import java.io.File;
-import java.util.List;
-
-import javax.annotation.Nullable;
-
-import org.apache.commons.lang3.SystemUtils;
-
 import com.google.common.collect.Lists;
-
 import io.onedev.commons.utils.ExplicitException;
 import io.onedev.commons.utils.FileUtils;
 import io.onedev.commons.utils.command.Commandline;
+import org.apache.commons.lang3.SystemUtils;
+
+import javax.annotation.Nullable;
+import java.io.File;
+import java.util.List;
 
 public class CommandFacade extends LeafFacade {
 
 	private static final long serialVersionUID = 1L;
 	
 	private final List<OsExecution> executions;
+
+	private final String builtInRegistryAccessToken;
 	
 	private final boolean useTTY;
 	
-	public CommandFacade(List<OsExecution> executions, boolean useTTY) {
+	public CommandFacade(List<OsExecution> executions, @Nullable String builtInRegistryAccessToken, boolean useTTY) {
 		this.executions = executions;
+		this.builtInRegistryAccessToken = builtInRegistryAccessToken;
 		this.useTTY = useTTY;
 	}
 
-	public CommandFacade(@Nullable String image, List<String> commands, boolean useTTY) {
-		this(Lists.newArrayList(new OsExecution(OsMatcher.ALL, image, commands)), useTTY);
+	public CommandFacade(@Nullable String image, @Nullable String builtInRegistryAccessToken, List<String> commands, boolean useTTY) {
+		this(Lists.newArrayList(new OsExecution(OsMatcher.ALL, image, commands)), builtInRegistryAccessToken, useTTY);
 	}
 	
 	public List<OsExecution> getExecutions() {
@@ -40,6 +40,11 @@ public class CommandFacade extends LeafFacade {
 				return execution;
 		}
 		throw new ExplicitException("This step is not applicable for os: " + osInfo);
+	}
+
+	@Nullable
+	public String getBuiltInRegistryAccessToken() {
+		return builtInRegistryAccessToken;
 	}
 
 	public boolean isUseTTY() {

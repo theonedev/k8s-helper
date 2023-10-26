@@ -1,17 +1,17 @@
 package io.onedev.k8shelper;
 
-import java.util.List;
+import io.onedev.commons.utils.command.Commandline;
 
 import javax.annotation.Nullable;
-
-import io.onedev.commons.utils.command.Commandline;
+import java.util.List;
 
 public class PowerShellFacade extends CommandFacade {
 
 	private static final long serialVersionUID = 1L;
 
-	public PowerShellFacade(@Nullable String image, List<String> commands, boolean useTTY) {
-		super(image, commands, useTTY);
+	public PowerShellFacade(@Nullable String image, @Nullable String builtInRegistryAccessToken,
+							List<String> commands, boolean useTTY) {
+		super(image, builtInRegistryAccessToken, commands, useTTY);
 	}
 
 	@Override

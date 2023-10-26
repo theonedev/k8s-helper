@@ -1,7 +1,5 @@
 package io.onedev.k8shelper;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.common.base.Preconditions;
 import com.google.common.base.Splitter;
 import com.google.common.base.Throwables;
@@ -317,7 +315,7 @@ public class KubernetesHelper {
 					commands.add("@echo off");
 				commands.add("echo hello from container");
 				generateCommandScript(Lists.newArrayList(0), "test", Lists.newArrayList(), 
-						new CommandFacade("any", commands, true), getWorkspace(), osInfo);
+						new CommandFacade("any", null, commands, true), getWorkspace(), osInfo);
 			} else {
 				K8sJobData jobData;
 				Client client = buildRestClient(sslFactory);
@@ -439,7 +437,7 @@ public class KubernetesHelper {
 							commands.add("@echo off");
 						commands.add(command);
 
-						commandFacade = new CommandFacade("any", commands, true);
+						commandFacade = new CommandFacade("any", null, commands, true);
 					}
 
 					generateCommandScript(position, stepNames, setupCommands, commandFacade, workingDir, osInfo);
@@ -767,13 +765,11 @@ public class KubernetesHelper {
 		
 		if (test) {
 			CommandFacade facade = new CommandFacade(
-					"this does not matter", Lists.newArrayList("this does not matter"), false);
+					"this does not matter", null, Lists.newArrayList("this does not matter"), false);
 			facade.execute(commandHandler, Lists.newArrayList(0));
 		} else {
 			K8sJobData jobData = readJobData();
-			
 			List<Action> actions = jobData.getActions();
-			
 			new CompositeFacade(actions).execute(commandHandler, new ArrayList<>());
 		} 
 	}
