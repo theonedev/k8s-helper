@@ -10,7 +10,7 @@
 		<version>1.2.1</version>
 	</parent>
 	<artifactId>k8s-helper</artifactId>
-	<version>2.11.7</version>
+	<version>2.11.8</version>
 	<build>
 		<plugins>
 			<plugin>
@@ -104,7 +104,7 @@
 		</dependency>
 	</dependencies>
 	<properties>
-		<commons.version>2.7.25</commons.version>
+		<commons.version>2.7.26</commons.version>
 		<jersey.version>2.26</jersey.version>
 		<sslcontext.version>7.4.9</sslcontext.version>
 	</properties>

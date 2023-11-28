@@ -65,9 +65,7 @@ public abstract class JobCache {
 					FileUtils.createDir(cacheDirectory);
 				File tempFile = null;
 				try {
-					tempFile = File.createTempFile("update-cache-last-modified", null, cacheDirectory);
-				} catch (IOException e) {
-					throw new RuntimeException(e);
+					tempFile = FileUtils.createTempFile("update-cache-last-modified", null, cacheDirectory);
 				} finally {
 					if (tempFile != null)
 						tempFile.delete();
