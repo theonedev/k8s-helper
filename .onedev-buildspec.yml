@@ -35,7 +35,7 @@ jobs:
     condition: ALL_PREVIOUS_STEPS_WERE_SUCCESSFUL
   - !BuildImageStep
     name: build and publish docker image
-    tags: 1dev/k8s-helper:@build_version@
+    tags: 1dev/k8s-helper-linux:@build_version@
     publish: true
     removeDanglingImages: true
     moreOptions: --builder onedev --platform linux/amd64,linux/arm64
