@@ -3,7 +3,7 @@ jobs:
 - name: Release
   steps:
   - !CheckoutStep
-    name: checkout
+    name: checkout code
     cloneCredential: !DefaultCredential {}
     withLfs: false
     withSubmodules: true
@@ -24,20 +24,21 @@ jobs:
     buildVersion: '@file:buildVersion@'
     condition: ALL_PREVIOUS_STEPS_WERE_SUCCESSFUL
   - !CommandStep
-    name: build & deploy
+    name: build and publish maven artifacts
     runInContainer: true
     image: '@property:buildEnvironment@'
     interpreter: !DefaultInterpreter
       commands:
       - set -e
-      - docker login -u robinshen -p @secrets:dockerhub-password@
-      - ''
       - mvn deploy -Dmaven.deploy.password=@secrets:maven-deploy-password@
-      - ''
-      - docker login -u robinshen -p @secrets:dockerhub-password@
-      - docker run --privileged --rm tonistiigi/binfmt --install all
-      - ./build.sh
     useTTY: false
+    condition: ALL_PREVIOUS_STEPS_WERE_SUCCESSFUL
+  - !BuildImageStep
+    name: build and publish docker image
+    tags: 1dev/k8s-helper:@build_version@
+    publish: true
+    removeDanglingImages: true
+    moreOptions: --builder onedev --platform linux/amd64,linux/arm64
     condition: ALL_PREVIOUS_STEPS_WERE_SUCCESSFUL
   - !CreateTagStep
     name: create tag
