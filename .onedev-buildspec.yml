@@ -34,7 +34,7 @@ jobs:
     useTTY: false
     condition: ALL_PREVIOUS_STEPS_WERE_SUCCESSFUL
   - !BuildImageStep
-    name: publish docker image
+    name: build docker image
     tags: 1dev/k8s-helper-linux:@build_version@
     publish: true
     removeDanglingImages: true
