@@ -24,7 +24,7 @@ jobs:
     buildVersion: '@file:buildVersion@'
     condition: ALL_PREVIOUS_STEPS_WERE_SUCCESSFUL
   - !CommandStep
-    name: build and publish maven artifacts
+    name: build and deploy
     runInContainer: true
     image: '@property:buildEnvironment@'
     interpreter: !DefaultInterpreter
@@ -34,7 +34,7 @@ jobs:
     useTTY: false
     condition: ALL_PREVIOUS_STEPS_WERE_SUCCESSFUL
   - !BuildImageStep
-    name: build and publish docker image
+    name: publish docker image
     tags: 1dev/k8s-helper-linux:@build_version@
     publish: true
     removeDanglingImages: true
