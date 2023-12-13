@@ -30,7 +30,7 @@ jobs:
     interpreter: !DefaultInterpreter
       commands:
       - set -e
-      - mvn deploy -Dmaven.deploy.password=@secrets:maven-deploy-password@
+      - mvn deploy -Dmaven.deploy.username=@job_token@ -Dmaven.deploy.password=@secrets:maven-deploy-password@
     useTTY: false
     condition: ALL_PREVIOUS_STEPS_WERE_SUCCESSFUL
   - !BuildImageStep

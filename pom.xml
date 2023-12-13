@@ -7,10 +7,10 @@
 	<parent>
 		<groupId>io.onedev</groupId>
 		<artifactId>parent</artifactId>
-		<version>1.2.1</version>
+		<version>1.2.2</version>
 	</parent>
 	<artifactId>k8s-helper</artifactId>
-	<version>2.11.14</version>
+	<version>2.12.0</version>
 	<build>
 		<plugins>
 			<plugin>
@@ -42,7 +42,7 @@
 	<repositories>
 		<repository>
 			<id>onedev</id>
-			<url>https://artifact.onedev.io/artifactory/onedev</url>
+			<url>https://code.onedev.io/onedev/~maven</url>
 			<releases>
 				<enabled>true</enabled>
 				<updatePolicy>never</updatePolicy>
@@ -104,8 +104,8 @@
 		</dependency>
 	</dependencies>
 	<properties>
-		<commons.version>2.7.30</commons.version>
+		<commons.version>2.8.0</commons.version>
 		<jersey.version>2.26</jersey.version>
-		<sslcontext.version>7.4.9</sslcontext.version>
+		<sslcontext.version>7.4.11</sslcontext.version>
 	</properties>
 </project>
