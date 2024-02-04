@@ -29,6 +29,7 @@ import javax.ws.rs.core.Response;
 import javax.ws.rs.core.StreamingOutput;
 import java.io.*;
 import java.nio.ByteBuffer;
+import java.nio.file.Paths;
 import java.util.*;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.regex.Matcher;
@@ -749,12 +750,13 @@ public class KubernetesHelper {
 					var cacheKey = entry.getKey();
 					var cacheInfo = cacheInfos.get(entry.getValue());
 					if (cacheInfo != null && !hitCacheKeys.contains(cacheKey)) {
-						if (uploadCache(serverUrl, jobToken, cacheKey, cacheInfo.getPath(),
-								cacheInfo.getUploadAccessToken(), new File(cacheInfo.getPath()),
-								sslFactory)) {
-							logger.info("Uploaded cache '" + cacheKey + "'");
+						var cachePath = cacheInfo.getPath();
+						var cacheDir = getWorkspace().toPath().resolve(cachePath).toFile();
+						if (uploadCache(serverUrl, jobToken, cacheKey, cachePath,
+								cacheInfo.getUploadAccessToken(), cacheDir, sslFactory)) {
+							logger.info("Uploaded cache (key: {}, path: {})", cacheKey, cachePath);
 						} else {
-							logger.warn("Not authorized to upload cache '" + cacheKey + "'");
+							logger.warn("Not authorized to upload cache (key: {}, path: {})", cacheKey, cachePath);
 						}
 					}
 				}
@@ -1037,12 +1039,12 @@ public class KubernetesHelper {
 			throw new ExplicitException("Duplicate cache key: " + cacheKey);
 
 		if (downloadCache(serverUrl, jobToken, cacheKey, cachePath, cacheDir, sslFactory)) {
-			logger.info("Hit cache '" + cacheKey + "'");
+			logger.info("Hit cache (key: {}, path: {})", cacheKey, cachePath);
 			hitCacheKeys.add(cacheKey);
 			writeHitCacheKeys(hitCacheKeys);
 		} else if (!cacheLoadKeys.isEmpty()) {
 			if (downloadCache(serverUrl, jobToken, cacheLoadKeys, cachePath, cacheDir, sslFactory))
-				logger.info("Loaded cache " + cacheLoadKeys);
+				logger.info("Matched cache (load keys: {}, path: {})", cacheLoadKeys, cachePath);
 		}
 		writeSetupCachePositions(setupCachePositions);
 	}

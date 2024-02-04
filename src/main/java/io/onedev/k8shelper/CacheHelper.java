@@ -50,14 +50,14 @@ public abstract class CacheHelper {
 
         FileUtils.createDir(cacheDir);
         if (downloadCache(cacheKey, cachePath, cacheDir)) {
-            logger.log("Hit cache '" + cacheKey + "'");
+            logger.log(String.format("Hit cache (key: %s, path: %s)", cacheKey, cachePath));
             hitCacheKeys.add(cacheKey);
         } else if (!cache.getLoadKeys().isEmpty()) {
             var cacheLoadKeys = cache.getLoadKeys().stream()
                     .map(it -> replacePlaceholders(it, buildHome))
                     .collect(toList());
             if (downloadCache(cacheLoadKeys, cachePath, cacheDir))
-                logger.log("Loaded cache " + cacheLoadKeys);
+                logger.log(String.format("Matched cache (load keys: %s, path: %s)", cacheLoadKeys, cachePath));
         }
     }
 
@@ -66,10 +66,11 @@ public abstract class CacheHelper {
             var cacheKey = entry.getKey();
             var cacheInfo = entry.getValue();
             if (!hitCacheKeys.contains(cacheKey)) {
-                if (uploadCache(cacheKey, cacheInfo.getLeft(), cacheInfo.getMiddle(), cacheInfo.getRight()))
-                    logger.log("Uploaded cache '" + cacheKey + "'");
+                var cachePath = cacheInfo.getLeft();
+                if (uploadCache(cacheKey, cachePath, cacheInfo.getMiddle(), cacheInfo.getRight()))
+                    logger.log(String.format("Uploaded cache (key: %s, path: %s)", cacheKey, cachePath));
                 else
-                    logger.warning("Not authorized to upload cache '" + cacheKey + "'");
+                    logger.log(String.format("Not authorized to upload cache (key: %s, path: %s)", cacheKey, cachePath));
             }
         }
     }
