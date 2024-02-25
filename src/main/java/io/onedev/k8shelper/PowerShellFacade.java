@@ -10,7 +10,7 @@ public class PowerShellFacade extends CommandFacade {
 	private static final long serialVersionUID = 1L;
 
 	public PowerShellFacade(@Nullable String image, @Nullable String builtInRegistryAccessToken,
-							List<String> commands, boolean useTTY) {
+							String commands, boolean useTTY) {
 		super(image, builtInRegistryAccessToken, commands, useTTY);
 	}
 

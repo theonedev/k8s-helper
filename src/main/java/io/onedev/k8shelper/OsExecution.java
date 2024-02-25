@@ -2,7 +2,6 @@ package io.onedev.k8shelper;
 
 import javax.annotation.Nullable;
 import java.io.Serializable;
-import java.util.List;
 
 public class OsExecution implements Serializable {
 
@@ -12,9 +11,9 @@ public class OsExecution implements Serializable {
 	
 	private final String image;
 
-	private final List<String> commands;
+	private final String commands;
 
-	public OsExecution(OsMatcher osMatcher, @Nullable String image, List<String> commands) {
+	public OsExecution(OsMatcher osMatcher, @Nullable String image, String commands) {
 		this.osMatcher = osMatcher;
 		this.image = image;
 		this.commands = commands;
@@ -29,7 +28,7 @@ public class OsExecution implements Serializable {
 		return image;
 	}
 
-	public List<String> getCommands() {
+	public String getCommands() {
 		return commands;
 	}
 	

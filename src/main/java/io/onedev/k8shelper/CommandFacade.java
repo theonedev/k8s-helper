@@ -1,5 +1,8 @@
 package io.onedev.k8shelper;
 
+import com.google.common.base.CharMatcher;
+import com.google.common.base.Joiner;
+import com.google.common.base.Splitter;
 import com.google.common.collect.Lists;
 import io.onedev.commons.utils.ExplicitException;
 import io.onedev.commons.utils.FileUtils;
@@ -26,7 +29,7 @@ public class CommandFacade extends LeafFacade {
 		this.useTTY = useTTY;
 	}
 
-	public CommandFacade(@Nullable String image, @Nullable String builtInRegistryAccessToken, List<String> commands, boolean useTTY) {
+	public CommandFacade(@Nullable String image, @Nullable String builtInRegistryAccessToken, String commands, boolean useTTY) {
 		this(Lists.newArrayList(new OsExecution(OsMatcher.ALL, image, commands)), builtInRegistryAccessToken, useTTY);
 	}
 	
@@ -115,5 +118,9 @@ public class CommandFacade extends LeafFacade {
 		else
 			return "\n";
 	}
-	
+
+	public String convertCommands(String commands) {
+		return Joiner.on(getEndOfLine()).join(Splitter.on("\n").trimResults(CharMatcher.is('\r')).split(commands));
+	}
+
 }

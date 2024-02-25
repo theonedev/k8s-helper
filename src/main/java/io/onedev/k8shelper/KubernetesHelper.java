@@ -29,6 +29,7 @@ import javax.ws.rs.core.Response;
 import javax.ws.rs.core.StreamingOutput;
 import java.io.*;
 import java.nio.ByteBuffer;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Paths;
 import java.util.*;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -48,7 +49,7 @@ import static org.apache.commons.lang3.SerializationUtils.serialize;
 
 public class KubernetesHelper {
 
-	public static final String IMAGE_REPO_PREFIX = "1dev/k8s-helper";
+	public static final String IMAGE_REPO_PREFIX = "code.onedev.io/onedev/k8s-helper";
 	
 	public static final String ENV_SERVER_URL = "ONEDEV_SERVER_URL";
 	
@@ -131,8 +132,8 @@ public class KubernetesHelper {
 			File commandHome = getCommandDir();
 			File stepScriptFile = new File(commandHome, "step-" + positionStr + commandFacade.getScriptExtension());
 			OsExecution execution = commandFacade.getExecution(osInfo);
-			FileUtils.writeLines(stepScriptFile, execution.getCommands(), commandFacade.getEndOfLine());
-			
+			FileUtils.writeStringToFile(stepScriptFile, commandFacade.convertCommands(execution.getCommands()), UTF_8);
+
  			if (SystemUtils.IS_OS_WINDOWS) { 
 				StringBuilder escapedStepNames = new StringBuilder();
 				for (int i=0; i<stepNames.length(); i++)
@@ -313,12 +314,12 @@ public class KubernetesHelper {
 					client.close();
 				}
 				FileUtils.createDir(getWorkspace());
-				List<String> commands = new ArrayList<>();
+				var commandsBuilder = new StringBuilder();
 				if (SystemUtils.IS_OS_WINDOWS)  
-					commands.add("@echo off");
-				commands.add("echo hello from container");
+					commandsBuilder.append("@echo off\n");
+				commandsBuilder.append("echo hello from container\n");
 				generateCommandScript(Lists.newArrayList(0), "test", Lists.newArrayList(), 
-						new CommandFacade("any", null, commands, true), getWorkspace(), osInfo);
+						new CommandFacade("any", null, commandsBuilder.toString(), true), getWorkspace(), osInfo);
 			} else {
 				K8sJobData jobData;
 				Client client = buildRestClient(sslFactory);
@@ -403,12 +404,12 @@ public class KubernetesHelper {
 							}
 						}
 
-						List<String> commands = new ArrayList<>();
+						var commandsBuilder = new StringBuilder();
 						if (SystemUtils.IS_OS_WINDOWS)
-							commands.add("@echo off");
-						commands.add(command);
+							commandsBuilder.append("@echo off\n");
+						commandsBuilder.append(command).append("\n");
 
-						commandFacade = new CommandFacade("any", null, commands, true);
+						commandFacade = new CommandFacade("any", null, commandsBuilder.toString(), true);
 					}
 
 					generateCommandScript(position, stepNames, setupCommands, commandFacade, workingDir, osInfo);
@@ -736,7 +737,7 @@ public class KubernetesHelper {
 		
 		if (test) {
 			CommandFacade facade = new CommandFacade(
-					"this does not matter", null, Lists.newArrayList("this does not matter"), false);
+					"this does not matter", null, "this does not matter", false);
 			facade.execute(commandHandler, Lists.newArrayList(0));
 		} else {
 			K8sJobData jobData = readJobData();

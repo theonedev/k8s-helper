@@ -12,7 +12,7 @@ public class ShellFacade extends CommandFacade {
 	private final String shell;
 	
 	public ShellFacade(@Nullable String image, @Nullable String builtInRegistryAccessToken,
-					   String shell, List<String> commands, boolean useTTY) {
+					   String shell, String commands, boolean useTTY) {
 		super(image, builtInRegistryAccessToken, commands, useTTY);
 		this.shell = shell;
 	}
