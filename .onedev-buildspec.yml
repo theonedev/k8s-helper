@@ -1,4 +1,4 @@
-version: 27
+version: 28
 jobs:
 - name: Release
   steps:
@@ -28,8 +28,9 @@ jobs:
     condition: ALL_PREVIOUS_STEPS_WERE_SUCCESSFUL
   - !BuildImageStep
     name: build docker image
-    tags: 1dev/k8s-helper-linux:@build_version@
+    tags: code.onedev.io/onedev/k8s-helper-linux:@build_version@
     publish: true
+    builtInRegistryAccessTokenSecret: onedev-token
     removeDanglingImages: true
     moreOptions: --builder onedev --platform linux/amd64,linux/arm64
     condition: ALL_PREVIOUS_STEPS_WERE_SUCCESSFUL
