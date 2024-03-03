@@ -95,6 +95,10 @@ public class KubernetesHelper {
 	private static File getWorkspace() {
 		return new File(getBuildHome(), WORKSPACE);
 	}
+
+	private static File getUserDir() {
+		return new File(getBuildHome(), "user");
+	}
 	
 	private static File getCommandDir() {
 		return new File(getBuildHome(), "command");
@@ -290,6 +294,7 @@ public class KubernetesHelper {
 		try {
 			FileUtils.createDir(getCommandDir());
 			FileUtils.createDir(getMarkDir());
+			FileUtils.createDir(getUserDir());
 			if (test) {
 				logger.info("Connecting to server '{}'...", serverUrl);
 				Client client = buildRestClient(sslFactory);
@@ -843,16 +848,16 @@ public class KubernetesHelper {
 				trustCertsFile.getAbsolutePath(), infoLogger, errorLogger);
 		cloneInfo.writeAuthData(userHome, git, true, infoLogger, errorLogger);
 
-		// Also populate auth info into build user home which will be shared
+		// Also populate auth info into user dir which will be shared
 		// with other containers. The setup script of other contains will 
 		// move all auth data from buildUserHome into the user home so that
 		// git pull/push can be done without asking for credentials
-		File buildUserHome = new File(getBuildHome(), "user");
+		File userDir = getUserDir();
 		Commandline anotherGit = new Commandline("git");
-		anotherGit.environments().put("HOME", buildUserHome.getAbsolutePath());
+		anotherGit.environments().put("HOME", userDir.getAbsolutePath());
 		installGitCert(anotherGit, getTrustCertsDir(), trustCertsFile,
 				trustCertsFile.getAbsolutePath(), infoLogger, errorLogger);
-		cloneInfo.writeAuthData(buildUserHome, anotherGit, true, infoLogger, errorLogger);
+		cloneInfo.writeAuthData(userDir, anotherGit, true, infoLogger, errorLogger);
 
 		cloneRepository(git, cloneInfo.getCloneUrl(), cloneInfo.getCloneUrl(), 
 				jobData.getRefName(), jobData.getCommitHash(), withLfs, withSubmodules, cloneDepth, 
