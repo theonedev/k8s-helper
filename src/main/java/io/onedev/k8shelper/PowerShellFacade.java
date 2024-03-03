@@ -9,9 +9,9 @@ public class PowerShellFacade extends CommandFacade {
 
 	private static final long serialVersionUID = 1L;
 
-	public PowerShellFacade(@Nullable String image, @Nullable String builtInRegistryAccessToken,
+	public PowerShellFacade(@Nullable String image, @Nullable String runAs, @Nullable String builtInRegistryAccessToken,
 							String commands, boolean useTTY) {
-		super(image, builtInRegistryAccessToken, commands, useTTY);
+		super(image, runAs, builtInRegistryAccessToken, commands, useTTY);
 	}
 
 	@Override

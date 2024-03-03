@@ -29,8 +29,9 @@ public class CommandFacade extends LeafFacade {
 		this.useTTY = useTTY;
 	}
 
-	public CommandFacade(@Nullable String image, @Nullable String builtInRegistryAccessToken, String commands, boolean useTTY) {
-		this(Lists.newArrayList(new OsExecution(OsMatcher.ALL, image, commands)), builtInRegistryAccessToken, useTTY);
+	public CommandFacade(@Nullable String image, @Nullable String runAs, @Nullable String builtInRegistryAccessToken,
+						 String commands, boolean useTTY) {
+		this(Lists.newArrayList(new OsExecution(OsMatcher.ALL, image, runAs, commands)), builtInRegistryAccessToken, useTTY);
 	}
 	
 	public List<OsExecution> getExecutions() {
@@ -68,7 +69,7 @@ public class CommandFacade extends LeafFacade {
 					+ ") else (\r\n"
 					+ "  ping -n 2 127.0.0.1 > nul\r\n"
 					+ "  goto :repeat\r\n"
-					+ ")\r\n");			
+					+ ")\r\n");
 		} else { 
 			FileUtils.writeFile(new File(buildHome, "pause.sh"), ""
 					+ "rm -f $ONEDEV_WORKSPACE/../continue\n"

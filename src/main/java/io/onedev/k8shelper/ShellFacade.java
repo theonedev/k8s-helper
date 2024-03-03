@@ -3,7 +3,6 @@ package io.onedev.k8shelper;
 import io.onedev.commons.utils.command.Commandline;
 
 import javax.annotation.Nullable;
-import java.util.List;
 
 public class ShellFacade extends CommandFacade {
 
@@ -11,9 +10,9 @@ public class ShellFacade extends CommandFacade {
 
 	private final String shell;
 	
-	public ShellFacade(@Nullable String image, @Nullable String builtInRegistryAccessToken,
+	public ShellFacade(@Nullable String image, @Nullable String runAs, @Nullable String builtInRegistryAccessToken,
 					   String shell, String commands, boolean useTTY) {
-		super(image, builtInRegistryAccessToken, commands, useTTY);
+		super(image, runAs, builtInRegistryAccessToken, commands, useTTY);
 		this.shell = shell;
 	}
 

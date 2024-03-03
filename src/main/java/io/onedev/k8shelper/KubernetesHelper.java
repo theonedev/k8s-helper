@@ -29,8 +29,6 @@ import javax.ws.rs.core.Response;
 import javax.ws.rs.core.StreamingOutput;
 import java.io.*;
 import java.nio.ByteBuffer;
-import java.nio.charset.StandardCharsets;
-import java.nio.file.Paths;
 import java.util.*;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.regex.Matcher;
@@ -49,7 +47,7 @@ import static org.apache.commons.lang3.SerializationUtils.serialize;
 
 public class KubernetesHelper {
 
-	public static final String IMAGE_REPO_PREFIX = "code.onedev.io/onedev/k8s-helper";
+	public static final String IMAGE_REPO_PREFIX = "1dev/k8s-helper";
 	
 	public static final String ENV_SERVER_URL = "ONEDEV_SERVER_URL";
 	
@@ -125,8 +123,7 @@ public class KubernetesHelper {
 	}
 	
 	private static void generateCommandScript(List<Integer> position, String stepNames, 
-			List<String> setupCommands, CommandFacade commandFacade, @Nullable File workingDir, 
-			OsInfo osInfo) {
+			CommandFacade commandFacade, @Nullable File workingDir, OsInfo osInfo) {
 		try {
 			String positionStr = stringifyStepPosition(position);
 			File commandHome = getCommandDir();
@@ -138,9 +135,6 @@ public class KubernetesHelper {
 				StringBuilder escapedStepNames = new StringBuilder();
 				for (int i=0; i<stepNames.length(); i++)
 					escapedStepNames.append('^').append(stepNames.charAt(i));
-				
-				File setupScriptFile = new File(commandHome, "setup-" + positionStr + ".bat");
-				FileUtils.writeLines(setupScriptFile, setupCommands, "\r\n");
 				
 				File scriptFile = new File(commandHome, positionStr + ".bat");
 				String markPrefix = getMarkDir().getAbsolutePath() + "\\" + positionStr;
@@ -164,8 +158,8 @@ public class KubernetesHelper {
 						"ping 127.0.0.1 -n 2 > nul",
 						"goto wait",
 						":start",
-						"cd " + (workingDir!=null? workingDir.getAbsolutePath(): "%initialWorkingDir%") 
-								+ " && cmd /c " + setupScriptFile.getAbsolutePath()
+						"cd " + (workingDir!=null? workingDir.getAbsolutePath(): "%initialWorkingDir%")
+								+ " && cmd /c xcopy /Y /S /K /Q /H /R C:\\onedev-build\\user\\* C:\\Users\\%USERNAME% > nul"
 								+ " && cmd /c echo " + TaskLogger.wrapWithAnsiNotice("Running step ^\"" + escapedStepNames + "^\"...")
 								+ " && " + commandFacade.getScriptInterpreter() + " " + stepScriptFile.getAbsolutePath(), 
 						"set exit_code=%errorlevel%",
@@ -180,10 +174,7 @@ public class KubernetesHelper {
 				FileUtils.writeLines(scriptFile, scriptContent, "\r\n");
 			} else {
 				String escapedStepNames = stepNames.replace("'", "'\\''");
-				
-				File setupScriptFile = new File(commandHome, "setup-" + positionStr + ".sh");
-				FileUtils.writeLines(setupScriptFile, setupCommands, "\n");
-				
+
 				File scriptFile = new File(commandHome, positionStr + ".sh");
 				String markPrefix = getMarkDir().getAbsolutePath() + "/" + positionStr;
 				List<String> wrapperScriptContent = Lists.newArrayList(
@@ -207,7 +198,7 @@ public class KubernetesHelper {
 						"  exit 1",
 						"fi",
 						"cd " + (workingDir!=null? "'" + workingDir.getAbsolutePath() + "'": "$initialWorkingDir") 
-								+ " && sh " + setupScriptFile.getAbsolutePath()
+								+ " && test -w $HOME && cp -r -f -p /onedev-build/user/. $HOME || export HOME=/onedev-build/user"
 								+ " && echo '" + TaskLogger.wrapWithAnsiNotice("Running step \"" + escapedStepNames + "\"...") + "'" 
 								+ " && " + commandFacade.getScriptInterpreter() + " " + stepScriptFile.getAbsolutePath(), 
 						"exitCode=\"$?\"", 
@@ -318,8 +309,8 @@ public class KubernetesHelper {
 				if (SystemUtils.IS_OS_WINDOWS)  
 					commandsBuilder.append("@echo off\n");
 				commandsBuilder.append("echo hello from container\n");
-				generateCommandScript(Lists.newArrayList(0), "test", Lists.newArrayList(), 
-						new CommandFacade("any", null, commandsBuilder.toString(), true), getWorkspace(), osInfo);
+				generateCommandScript(Lists.newArrayList(0), "test",
+						new CommandFacade("any", null, null, commandsBuilder.toString(), true), getWorkspace(), osInfo);
 			} else {
 				K8sJobData jobData;
 				Client client = buildRestClient(sslFactory);
@@ -352,14 +343,6 @@ public class KubernetesHelper {
 				CompositeFacade entryFacade = new CompositeFacade(jobData.getActions());
 				entryFacade.traverse((LeafVisitor<Void>) (facade, position) -> {
 					String stepNames = entryFacade.getNamesAsString(position);
-
-					List<String> setupCommands = new ArrayList<>();
-					if (SystemUtils.IS_OS_WINDOWS) {
-						setupCommands.add("@echo off");
-						setupCommands.add("xcopy /Y /S /K /Q /H /R C:\\Users\\%USERNAME%\\auth-info\\* C:\\Users\\%USERNAME% > nul");
-					} else {
-						setupCommands.add("cp -r -f -p /root/auth-info/. /root");
-					}
 
 					String positionStr = stringifyStepPosition(position);
 
@@ -409,10 +392,10 @@ public class KubernetesHelper {
 							commandsBuilder.append("@echo off\n");
 						commandsBuilder.append(command).append("\n");
 
-						commandFacade = new CommandFacade("any", null, commandsBuilder.toString(), true);
+						commandFacade = new CommandFacade("any", null, null, commandsBuilder.toString(), true);
 					}
 
-					generateCommandScript(position, stepNames, setupCommands, commandFacade, workingDir, osInfo);
+					generateCommandScript(position, stepNames, commandFacade, workingDir, osInfo);
 
 					return null;
 				}, new ArrayList<>());
@@ -662,7 +645,25 @@ public class KubernetesHelper {
 		}
 	}
 
+	public static void changeOwner(File dir, String owner) {
+		var chown = new Commandline("chown");
+		chown.addArgs("-R", owner, dir.getAbsolutePath());
+		chown.execute(new LineConsumer() {
+			@Override
+			public void consume(String line) {
+				logger.info(line);
+			}
+		}, new LineConsumer() {
+			@Override
+			public void consume(String line) {
+				logger.error(line);
+			}
+
+		}).checkReturnCode();
+	}
+
 	public static void sidecar(String serverUrl, String jobToken, boolean test) {
+		var osInfo = getOsInfo();
 		Map<String, SetupCacheFacade> cacheInfos = new HashMap<>();
 		LeafHandler commandHandler = new LeafHandler() {
 
@@ -685,11 +686,16 @@ public class KubernetesHelper {
 				try {
 					String stepScript = readFileToString(stepScriptFile, UTF_8);
 
-					if (facade instanceof CommandFacade) 
-						((CommandFacade) facade).generatePauseCommand(getBuildHome());
-					
+					if (facade instanceof CommandFacade) {
+						CommandFacade commandFacade = (CommandFacade) facade;
+						commandFacade.generatePauseCommand(getBuildHome());
+						var execution = commandFacade.getExecution(osInfo);
+						if (execution.getRunAs() != null)
+							changeOwner(getBuildHome(), execution.getRunAs());
+					}
+
 					stepScript = replacePlaceholders(stepScript, getBuildHome());
-					FileUtils.writeFile(stepScriptFile, stepScript, UTF_8.name());
+					FileUtils.writeFile(stepScriptFile, stepScript, UTF_8);
 					
 					file = new File(getMarkDir(), positionStr + ".start");
 					if (!file.createNewFile()) 
@@ -707,7 +713,7 @@ public class KubernetesHelper {
 					if (SystemUtils.IS_OS_WINDOWS)
 						errorMessage = errorMessage.replace("\n", "\r\n");
 					
-					FileUtils.writeFile(file, errorMessage, UTF_8.name());
+					FileUtils.writeFile(file, errorMessage, UTF_8);
 				}
 			
 				File successfulFile = new File(getMarkDir(), positionStr + ".successful");
@@ -737,7 +743,7 @@ public class KubernetesHelper {
 		
 		if (test) {
 			CommandFacade facade = new CommandFacade(
-					"this does not matter", null, "this does not matter", false);
+					"this does not matter", null, null, "this does not matter", false);
 			facade.execute(commandHandler, Lists.newArrayList(0));
 		} else {
 			K8sJobData jobData = readJobData();
@@ -819,12 +825,8 @@ public class KubernetesHelper {
 		LineConsumer infoLogger = newInfoLogger();
 		LineConsumer errorLogger = newErrorLogger();
 		
-		File userHome;
-		if (SystemUtils.IS_OS_WINDOWS)
-			userHome = new File(System.getProperty("user.home"));
-		else
-			userHome = new File("/root");
-		
+		File userHome = new File(System.getProperty("user.home"));
+
 		File workspace = getWorkspace();
 		Commandline git = new Commandline("git");
 		if (checkoutPath != null) {
@@ -841,16 +843,16 @@ public class KubernetesHelper {
 				trustCertsFile.getAbsolutePath(), infoLogger, errorLogger);
 		cloneInfo.writeAuthData(userHome, git, true, infoLogger, errorLogger);
 
-		// Also populate auth info into authInfoHome which will be shared 
+		// Also populate auth info into build user home which will be shared
 		// with other containers. The setup script of other contains will 
-		// move all auth data from authInfoHome into the user home so that 
+		// move all auth data from buildUserHome into the user home so that
 		// git pull/push can be done without asking for credentials
-		File authInfoDir = new File(userHome, "auth-info");
+		File buildUserHome = new File(getBuildHome(), "user");
 		Commandline anotherGit = new Commandline("git");
-		anotherGit.environments().put("HOME", authInfoDir.getAbsolutePath());
+		anotherGit.environments().put("HOME", buildUserHome.getAbsolutePath());
 		installGitCert(anotherGit, getTrustCertsDir(), trustCertsFile,
 				trustCertsFile.getAbsolutePath(), infoLogger, errorLogger);
-		cloneInfo.writeAuthData(authInfoDir, anotherGit, true, infoLogger, errorLogger);
+		cloneInfo.writeAuthData(buildUserHome, anotherGit, true, infoLogger, errorLogger);
 
 		cloneRepository(git, cloneInfo.getCloneUrl(), cloneInfo.getCloneUrl(), 
 				jobData.getRefName(), jobData.getCommitHash(), withLfs, withSubmodules, cloneDepth, 
@@ -934,18 +936,18 @@ public class KubernetesHelper {
 				@Override
 				public void write(OutputStream os) throws IOException {
 					writeInt(os, position.size());
-					for (int each: position) 
+					for (int each: position)
 						writeInt(os, each);
-					
+
 					writeInt(os, placeholderValues.size());
 					for (Map.Entry<String, String> entry: placeholderValues.entrySet()) {
 						writeString(os, entry.getKey());
 						writeString(os, entry.getValue());
 					}
-					
+
 					TarUtils.tar(baseDir, includeFiles, excludeFiles, os, false);
-			   }				   
-			   
+			   }
+
 			};
 			
 			try (Response response = builder.post(Entity.entity(os, MediaType.APPLICATION_OCTET_STREAM))) {

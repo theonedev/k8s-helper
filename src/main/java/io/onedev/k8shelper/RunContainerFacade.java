@@ -23,11 +23,11 @@ public class RunContainerFacade extends LeafFacade {
 		this.useTTY = useTTY;
 	}
 
-	public RunContainerFacade(String image, @Nullable String opts, @Nullable String args,
+	public RunContainerFacade(String image, @Nullable String runAs, @Nullable String args,
 							  Map<String, String> envMap, @Nullable String workingDir,
 							  Map<String, String> volumeMounts, @Nullable String builtInRegistryAccessToken,
 							  boolean useTTY) {
-		this(Lists.newArrayList(new OsContainer(OsMatcher.ALL, image, opts, args, envMap,
+		this(Lists.newArrayList(new OsContainer(OsMatcher.ALL, image, runAs, args, envMap,
 				workingDir, volumeMounts)), builtInRegistryAccessToken, useTTY);
 	}
 	

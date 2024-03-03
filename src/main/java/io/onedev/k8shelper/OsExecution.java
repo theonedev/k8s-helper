@@ -11,11 +11,14 @@ public class OsExecution implements Serializable {
 	
 	private final String image;
 
+	private final String runAs;
+
 	private final String commands;
 
-	public OsExecution(OsMatcher osMatcher, @Nullable String image, String commands) {
+	public OsExecution(OsMatcher osMatcher, @Nullable String image, @Nullable String runAs, String commands) {
 		this.osMatcher = osMatcher;
 		this.image = image;
+		this.runAs = runAs;
 		this.commands = commands;
 	}
 
@@ -26,6 +29,11 @@ public class OsExecution implements Serializable {
 	@Nullable
 	public String getImage() {
 		return image;
+	}
+
+	@Nullable
+	public String getRunAs() {
+		return runAs;
 	}
 
 	public String getCommands() {

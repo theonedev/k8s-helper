@@ -11,6 +11,8 @@ public class ServiceFacade implements Serializable {
 	private final String name;
 	
 	private final String image;
+
+	private final String runAs;
 	
 	private final String arguments;
 	
@@ -20,10 +22,12 @@ public class ServiceFacade implements Serializable {
 
 	private final String builtInRegistryAccessToken;
 
-	public ServiceFacade(String name, String image, @Nullable String arguments, Map<String, String> envs,
-						 String readinessCheckCommand, @Nullable String builtInRegistryAccessToken) {
+	public ServiceFacade(String name, String image, @Nullable String runAs, @Nullable String arguments,
+						 Map<String, String> envs, String readinessCheckCommand,
+						 @Nullable String builtInRegistryAccessToken) {
 		this.name = name;
 		this.image = image;
+		this.runAs = runAs;
 		this.arguments = arguments;
 		this.envs = envs;
 		this.readinessCheckCommand = readinessCheckCommand;
@@ -36,6 +40,11 @@ public class ServiceFacade implements Serializable {
 
 	public String getImage() {
 		return image;
+	}
+
+	@Nullable
+	public String getRunAs() {
+		return runAs;
 	}
 
 	@Nullable

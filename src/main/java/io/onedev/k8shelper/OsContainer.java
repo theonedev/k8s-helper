@@ -13,7 +13,7 @@ public class OsContainer implements Serializable {
 	
 	private final String image;
 
-	private final String opts;
+	private final String runAs;
 
 	private final String args;
 	
@@ -23,12 +23,12 @@ public class OsContainer implements Serializable {
 	
 	private final Map<String, String> volumeMounts;
 
-	public OsContainer(OsMatcher osMatcher, String image, @Nullable String opts,
+	public OsContainer(OsMatcher osMatcher, String image, @Nullable String runAs,
 					   @Nullable String args, Map<String, String> envMap,
 					   @Nullable String workingDir, Map<String, String> volumeMounts) {
 		this.osMatcher = osMatcher;
 		this.image = image;
-		this.opts = opts;
+		this.runAs = runAs;
 		this.args = args;
 		this.envMap = envMap;
 		this.workingDir = workingDir;
@@ -44,8 +44,8 @@ public class OsContainer implements Serializable {
 	}
 
 	@Nullable
-	public String getOpts() {
-		return opts;
+	public String getRunAs() {
+		return runAs;
 	}
 
 	@Nullable
