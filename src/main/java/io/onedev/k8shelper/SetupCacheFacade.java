@@ -11,14 +11,14 @@ public class SetupCacheFacade extends LeafFacade {
 
     private final List<String> loadKeys;
 
-    private final String path;
+    private final List<String> paths;
 
     private final String uploadAccessToken;
 
-    public SetupCacheFacade(String key, List<String> loadKeys, String path, @Nullable String uploadAccessToken) {
+    public SetupCacheFacade(String key, List<String> loadKeys, List<String> paths, @Nullable String uploadAccessToken) {
         this.key = key;
         this.loadKeys = loadKeys;
-        this.path = path;
+        this.paths = paths;
         this.uploadAccessToken = uploadAccessToken;
     }
 
@@ -30,8 +30,8 @@ public class SetupCacheFacade extends LeafFacade {
         return loadKeys;
     }
 
-    public String getPath() {
-        return path;
+    public List<String> getPaths() {
+        return paths;
     }
 
     @Nullable
