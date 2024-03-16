@@ -1040,8 +1040,11 @@ public class KubernetesHelper {
 		var sslFactory = buildSSLFactory(getTrustCertsDir());
 
 		var cacheDirs = new LinkedHashMap<String, File>();
-		for (var cachePath: Splitter.on('\n').splitToList(new String(getDecoder().decode(encodedCachePaths.getBytes(UTF_8)), UTF_8)))
-			cacheDirs.put(cachePath, getWorkspace().toPath().resolve(cachePath).toFile());
+		for (var cachePath: Splitter.on('\n').splitToList(new String(getDecoder().decode(encodedCachePaths.getBytes(UTF_8)), UTF_8))) {
+			var cacheDir = getWorkspace().toPath().resolve(cachePath).toFile();
+			FileUtils.createDir(cacheDir);
+			cacheDirs.put(cachePath, cacheDir);
+		}
 
 		Map<String, String> setupCachePositions = readSetupCachePositions();
 		Set<String> hitCacheKeys = readHitCacheKeys();
