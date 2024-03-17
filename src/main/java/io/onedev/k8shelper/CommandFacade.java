@@ -1,7 +1,6 @@
 package io.onedev.k8shelper;
 
 import com.google.common.base.CharMatcher;
-import com.google.common.base.Joiner;
 import com.google.common.base.Splitter;
 import com.google.common.collect.Lists;
 import io.onedev.commons.utils.ExplicitException;
@@ -120,8 +119,11 @@ public class CommandFacade extends LeafFacade {
 			return "\n";
 	}
 
-	public String convertCommands(String commands) {
-		return Joiner.on(getEndOfLine()).join(Splitter.on("\n").trimResults(CharMatcher.is('\r')).split(commands));
+	public String normalizeCommands(String commands) {
+		var builder = new StringBuilder();
+		for (var line : Splitter.on('\n').trimResults(CharMatcher.is('\r')).split(commands))
+			builder.append(line).append(getEndOfLine());
+		return builder.toString();
 	}
 
 }

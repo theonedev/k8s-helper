@@ -5,8 +5,6 @@ import com.google.common.base.Preconditions;
 import com.google.common.base.Splitter;
 import com.google.common.base.Throwables;
 import com.google.common.collect.Lists;
-import com.google.common.io.ByteStreams;
-import com.google.common.io.CountingOutputStream;
 import io.onedev.commons.utils.*;
 import io.onedev.commons.utils.command.Commandline;
 import io.onedev.commons.utils.command.ExecutionResult;
@@ -138,7 +136,7 @@ public class KubernetesHelper {
 			File commandHome = getCommandDir();
 			File stepScriptFile = new File(commandHome, "step-" + positionStr + commandFacade.getScriptExtension());
 			OsExecution execution = commandFacade.getExecution(osInfo);
-			FileUtils.writeStringToFile(stepScriptFile, commandFacade.convertCommands(execution.getCommands()), UTF_8);
+			FileUtils.writeStringToFile(stepScriptFile, commandFacade.normalizeCommands(execution.getCommands()), UTF_8);
 
  			if (SystemUtils.IS_OS_WINDOWS) { 
 				StringBuilder escapedStepNames = new StringBuilder();
