@@ -1,20 +1,18 @@
 package io.onedev.k8shelper;
 
-import static io.onedev.k8shelper.KubernetesHelper.readPlaceholderValues;
-import static io.onedev.k8shelper.KubernetesHelper.replacePlaceholders;
+import io.onedev.commons.utils.ExplicitException;
+import io.onedev.commons.utils.FileUtils;
+import org.apache.tools.ant.DirectoryScanner;
 
+import javax.annotation.Nullable;
 import java.io.File;
 import java.io.IOException;
 import java.util.Collection;
 import java.util.Map;
 import java.util.Set;
 
-import javax.annotation.Nullable;
-
-import org.apache.tools.ant.DirectoryScanner;
-
-import io.onedev.commons.utils.ExplicitException;
-import io.onedev.commons.utils.FileUtils;
+import static io.onedev.k8shelper.KubernetesHelper.readPlaceholderValues;
+import static io.onedev.k8shelper.KubernetesHelper.replacePlaceholders;
 
 public class ServerSideFacade extends LeafFacade {
 
@@ -59,7 +57,7 @@ public class ServerSideFacade extends LeafFacade {
 		return placeholders;
 	}
 
-	public void execute(File buildHome, Runner runner) throws Exception {
+	public boolean execute(File buildHome, Runner runner) {
 		File filesDir = FileUtils.createTempDir();
 		try {
 			Collection<String> placeholders = getPlaceholders();
@@ -90,16 +88,16 @@ public class ServerSideFacade extends LeafFacade {
 				}
 			}
 
+			var result = runner.run(filesDir, placeholderValues);
 			
-			Map<String, byte[]> outputFiles = runner.run(filesDir, placeholderValues);
-			
-			if (outputFiles != null) {
-				for (Map.Entry<String, byte[]> entry: outputFiles.entrySet()) {
-					FileUtils.writeByteArrayToFile(
-							new File(buildHome, entry.getKey()), 
-							entry.getValue());
-				}
+			for (Map.Entry<String, byte[]> entry: result.getOutputFiles().entrySet()) {
+				FileUtils.writeByteArrayToFile(
+						new File(buildHome, entry.getKey()),
+						entry.getValue());
 			}
+			return result.isSuccessful();
+		} catch (IOException e) {
+			throw new RuntimeException(e);
 		} finally {
 			FileUtils.deleteDir(filesDir);
 		}
@@ -107,7 +105,7 @@ public class ServerSideFacade extends LeafFacade {
 	
 	public interface Runner {
 		
-		Map<String, byte[]> run(File inputDir, Map<String, String> placeholderValues);
+		ServerStepResult run(File inputDir, Map<String, String> placeholderValues);
 		
 	}
 	

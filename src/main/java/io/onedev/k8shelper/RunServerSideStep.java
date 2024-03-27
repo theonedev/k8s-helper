@@ -1,11 +1,10 @@
 package io.onedev.k8shelper;
 
+import io.onedev.commons.utils.TaskLogger;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import com.google.common.base.Preconditions;
-
-import io.onedev.commons.utils.TaskLogger;
+import static io.onedev.k8shelper.KubernetesHelper.LOG_END_MESSAGE;
 
 public class RunServerSideStep {
 
@@ -17,19 +16,22 @@ public class RunServerSideStep {
 			String serverUrl = System.getenv(KubernetesHelper.ENV_SERVER_URL);
 			if (serverUrl == null)
 				throw new RuntimeException("Environment '" + KubernetesHelper.ENV_SERVER_URL + "' is not defined");
-			String jobToken = Preconditions.checkNotNull(System.getenv(KubernetesHelper.ENV_JOB_TOKEN));
+			String jobToken = System.getenv(KubernetesHelper.ENV_JOB_TOKEN);
 			if (jobToken == null)
 				throw new RuntimeException("Environment '" + KubernetesHelper.ENV_JOB_TOKEN + "' is not defined");
 
+			boolean successful;
 			if (args.length >= 5)
-				KubernetesHelper.runServerStep(serverUrl, jobToken, args[0], args[1], args[2], args[3], args[4]);
+				successful = KubernetesHelper.runServerStep(serverUrl, jobToken, args[0], args[1], args[2], args[3], args[4]);
 			else
-				KubernetesHelper.runServerStep(serverUrl, jobToken, args[0], args[1], args[2], args[3], null);
+				successful = KubernetesHelper.runServerStep(serverUrl, jobToken, args[0], args[1], args[2], args[3], null);
+			if (!successful)
+				exitCode = 1;
 		} catch (Exception e) {
 			logger.error(TaskLogger.wrapWithAnsiError(TaskLogger.toString(null, e)));
 			exitCode = 1;
 		} finally {
-			logger.info(KubernetesHelper.LOG_END_MESSAGE);
+			logger.info(LOG_END_MESSAGE);
 			System.exit(exitCode);
 		}
 	}

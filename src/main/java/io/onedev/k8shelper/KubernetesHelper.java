@@ -7,7 +7,6 @@ import com.google.common.base.Throwables;
 import com.google.common.collect.Lists;
 import io.onedev.commons.utils.*;
 import io.onedev.commons.utils.command.Commandline;
-import io.onedev.commons.utils.command.ExecutionResult;
 import io.onedev.commons.utils.command.LineConsumer;
 import nl.altindag.ssl.SSLFactory;
 import nl.altindag.ssl.util.CertificateUtils;
@@ -16,13 +15,13 @@ import org.apache.commons.codec.DecoderException;
 import org.apache.commons.codec.binary.Hex;
 import org.apache.commons.compress.utils.IOUtils;
 import org.apache.commons.lang3.SystemUtils;
+import org.apache.commons.lang3.time.DurationFormatUtils;
 import org.glassfish.jersey.client.ClientProperties;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import javax.annotation.Nullable;
 import javax.net.ssl.HostnameVerifier;
-import javax.net.ssl.SSLSession;
 import javax.ws.rs.client.*;
 import javax.ws.rs.core.MediaType;
 import javax.ws.rs.core.Response;
@@ -35,7 +34,7 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 import static io.onedev.commons.utils.TarUtils.untar;
-import static io.onedev.k8shelper.CacheHelper.*;
+import static io.onedev.k8shelper.CacheHelper.tar;
 import static io.onedev.k8shelper.CacheHelper.untar;
 import static java.nio.charset.StandardCharsets.UTF_8;
 import static java.util.Base64.getDecoder;
@@ -63,7 +62,7 @@ public class KubernetesHelper {
 	public static final String BEARER = "Bearer";
 	
 	public static final String LOG_END_MESSAGE = "===== End of OneDev K8s Helper Log =====";
-	
+
 	public static final String BUILD_VERSION = "buildVersion";
 	
 	public static final String PAUSE = "pause";
@@ -129,7 +128,7 @@ public class KubernetesHelper {
 		}
 	}
 	
-	private static void generateCommandScript(List<Integer> position, String stepNames, 
+	private static void generateCommandScript(List<Integer> position, String stepPath,
 			CommandFacade commandFacade, @Nullable File workingDir, OsInfo osInfo) {
 		try {
 			String positionStr = stringifyStepPosition(position);
@@ -139,9 +138,9 @@ public class KubernetesHelper {
 			FileUtils.writeStringToFile(stepScriptFile, commandFacade.normalizeCommands(execution.getCommands()), UTF_8);
 
  			if (SystemUtils.IS_OS_WINDOWS) { 
-				StringBuilder escapedStepNames = new StringBuilder();
-				for (int i=0; i<stepNames.length(); i++)
-					escapedStepNames.append('^').append(stepNames.charAt(i));
+				StringBuilder escapedStepPath = new StringBuilder();
+				for (int i=0; i<stepPath.length(); i++)
+					escapedStepPath.append('^').append(stepPath.charAt(i));
 				
 				File scriptFile = new File(commandHome, positionStr + ".bat");
 				String markPrefix = getMarkDir().getAbsolutePath() + "\\" + positionStr;
@@ -150,16 +149,16 @@ public class KubernetesHelper {
 						"set \"initialWorkingDir=%cd%\"",
 						":wait",
 						"if exist \"" + markPrefix + ".skip\" (",
-						"  echo " + TaskLogger.wrapWithAnsiNotice("Step ^\"" + escapedStepNames + "^\" is skipped"),
+						"  echo " + TaskLogger.wrapWithAnsiNotice("Step ^\"" + escapedStepPath + "^\" is skipped"),
 						"  echo " + LOG_END_MESSAGE,
 						"  goto :eof",
 						")",
 						"if exist \"" + markPrefix + ".error\" (",
-						"  echo " + TaskLogger.wrapWithAnsiNotice("Running step ^\"" + escapedStepNames + "^\"..."),
+						"  echo " + TaskLogger.wrapWithAnsiNotice("Running step ^\"" + escapedStepPath + "^\"..."),
 						"  type " + markPrefix + ".error",
 						"  copy /y nul " + markPrefix + ".failed > nul",
 						"  echo " + LOG_END_MESSAGE,
-						"  exit 1",
+						"  exit 0",
 						")",
 						"if exist \"" + markPrefix + ".start\" goto start",
 						"ping 127.0.0.1 -n 2 > nul",
@@ -167,20 +166,22 @@ public class KubernetesHelper {
 						":start",
 						"cd " + (workingDir!=null? workingDir.getAbsolutePath(): "%initialWorkingDir%")
 								+ " && cmd /c xcopy /Y /S /K /Q /H /R C:\\onedev-build\\user\\* C:\\Users\\%USERNAME% > nul"
-								+ " && cmd /c echo " + TaskLogger.wrapWithAnsiNotice("Running step ^\"" + escapedStepNames + "^\"...")
+								+ " && cmd /c echo " + TaskLogger.wrapWithAnsiNotice("Running step ^\"" + escapedStepPath + "^\"...")
 								+ " && " + commandFacade.getScriptInterpreter() + " " + stepScriptFile.getAbsolutePath(), 
 						"set exit_code=%errorlevel%",
 						"if \"%exit_code%\"==\"0\" (",
-						"	echo " + TaskLogger.wrapWithAnsiSuccess("Step ^\"" + escapedStepNames + "^\" is successful"),
+						"	echo " + TaskLogger.wrapWithAnsiSuccess("Step ^\"" + escapedStepPath + "^\" is successful"),
 						"	copy /y nul " + markPrefix + ".successful > nul",
 						") else (",
+						"   echo " + TaskLogger.wrapWithAnsiError("Command exited with code %exit_code%"),
+						"	echo " + TaskLogger.wrapWithAnsiError("Step ^\"" + escapedStepPath + "^\" is failed"),
 						"	copy /y nul " + markPrefix + ".failed > nul",
 						")",
 						"echo " + LOG_END_MESSAGE,
-						"exit %exit_code%");
+						"exit 0");
 				FileUtils.writeLines(scriptFile, scriptContent, "\r\n");
 			} else {
-				String escapedStepNames = stepNames.replace("'", "'\\''");
+				String escapedStepPath = stepPath.replace("'", "'\\''");
 
 				File scriptFile = new File(commandHome, positionStr + ".sh");
 				String markPrefix = getMarkDir().getAbsolutePath() + "/" + positionStr;
@@ -192,32 +193,34 @@ public class KubernetesHelper {
 						"done",
 						"if [ -f " + markPrefix + ".skip ]",
 						"then",
-						"  echo '" + TaskLogger.wrapWithAnsiNotice("Step \"" + escapedStepNames + "\" is skipped") + "'",
+						"  echo '" + TaskLogger.wrapWithAnsiNotice("Step \"" + escapedStepPath + "\" is skipped") + "'",
 						"  echo " + LOG_END_MESSAGE,
 						"  exit 0",
 						"fi",
 						"if [ -f " + markPrefix + ".error ]",
 						"then",
-						"  echo '" + TaskLogger.wrapWithAnsiNotice("Running step \"" + escapedStepNames + "\"...") + "'",
+						"  echo '" + TaskLogger.wrapWithAnsiNotice("Running step \"" + escapedStepPath + "\"...") + "'",
 						"  cat " + markPrefix + ".error",
 						"  touch " + markPrefix + ".failed",
 						"  echo " + LOG_END_MESSAGE,
-						"  exit 1",
+						"  exit 0",
 						"fi",
 						"cd " + (workingDir!=null? "'" + workingDir.getAbsolutePath() + "'": "$initialWorkingDir") 
 								+ " && test -w $HOME && cp -r -f -p /onedev-build/user/. $HOME || export HOME=/onedev-build/user"
-								+ " && echo '" + TaskLogger.wrapWithAnsiNotice("Running step \"" + escapedStepNames + "\"...") + "'" 
+								+ " && echo '" + TaskLogger.wrapWithAnsiNotice("Running step \"" + escapedStepPath + "\"...") + "'"
 								+ " && " + commandFacade.getScriptInterpreter() + " " + stepScriptFile.getAbsolutePath(), 
 						"exitCode=\"$?\"", 
 						"if [ $exitCode -eq 0 ]",
 						"then",
-						"  echo '" + TaskLogger.wrapWithAnsiSuccess("Step \"" + escapedStepNames + "\" is successful") + "'",
+						"  echo '" + TaskLogger.wrapWithAnsiSuccess("Step \"" + escapedStepPath + "\" is successful") + "'",
 						"  touch " + markPrefix + ".successful",
 						"else",
+						"  echo " + TaskLogger.wrapWithAnsiError("Command exited with code $exitCode"),
+						"  echo '" + TaskLogger.wrapWithAnsiError("Step \"" + escapedStepPath + "\" is failed") + "'",
 						"  touch " + markPrefix + ".failed",
-						"fi",						
+						"fi",
 						"echo " + LOG_END_MESSAGE,
-						"exit $exitCode");
+						"exit 0");
 				FileUtils.writeLines(scriptFile, wrapperScriptContent, "\n");
 			}
 		} catch (IOException e) {
@@ -350,7 +353,7 @@ public class KubernetesHelper {
 				
 				CompositeFacade entryFacade = new CompositeFacade(jobData.getActions());
 				entryFacade.traverse((LeafVisitor<Void>) (facade, position) -> {
-					String stepNames = entryFacade.getNamesAsString(position);
+					String stepPath = entryFacade.getPathAsString(position);
 
 					String positionStr = stringifyStepPosition(position);
 
@@ -403,7 +406,7 @@ public class KubernetesHelper {
 						commandFacade = new CommandFacade("any", null, null, commandsBuilder.toString(), true);
 					}
 
-					generateCommandScript(position, stepNames, commandFacade, workingDir, osInfo);
+					generateCommandScript(position, stepPath, commandFacade, workingDir, osInfo);
 
 					return null;
 				}, new ArrayList<>());
@@ -479,7 +482,7 @@ public class KubernetesHelper {
 		AtomicBoolean originExists = new AtomicBoolean(false);
 		git.arguments(initialArgs);
 		git.addArgs("remote", "add", "origin", remoteUrl);
-		ExecutionResult result = git.execute(infoLogger, new LineConsumer() {
+		var result = git.execute(infoLogger, new LineConsumer() {
 
 			@Override
 			public void consume(String line) {
@@ -625,7 +628,7 @@ public class KubernetesHelper {
 			git.addArgs("lfs", "version");
 
 			AtomicBoolean lfsExists = new AtomicBoolean(true);
-			ExecutionResult result = git.execute(new LineConsumer() {
+			var result = git.execute(new LineConsumer() {
 
 				@Override
 				public void consume(String line) {
@@ -670,7 +673,7 @@ public class KubernetesHelper {
 		}).checkReturnCode();
 	}
 
-	public static void sidecar(String serverUrl, String jobToken, boolean test) {
+	public static boolean sidecar(String serverUrl, String jobToken, boolean test) {
 		var osInfo = getOsInfo();
 		Map<String, SetupCacheFacade> cacheInfos = new HashMap<>();
 		LeafHandler commandHandler = new LeafHandler() {
@@ -752,12 +755,13 @@ public class KubernetesHelper {
 		if (test) {
 			CommandFacade facade = new CommandFacade(
 					"this does not matter", null, null, "this does not matter", false);
-			facade.execute(commandHandler, Lists.newArrayList(0));
+			return facade.execute(commandHandler, Lists.newArrayList(0));
 		} else {
 			K8sJobData jobData = readJobData();
 			List<Action> actions = jobData.getActions();
 
-			if (new CompositeFacade(actions).execute(commandHandler, new ArrayList<>())) {
+			var successful = new CompositeFacade(actions).execute(commandHandler, new ArrayList<>());
+			if (successful) {
 				var sslFactory = buildSSLFactory(getTrustCertsDir());
 				Map<String, String> setupCachePositions = readSetupCachePositions();
 				Set<String> hitCacheKeys = readHitCacheKeys();
@@ -777,6 +781,7 @@ public class KubernetesHelper {
 					}
 				}
 			}
+			return successful;
 		}
 	}
 	
@@ -868,19 +873,19 @@ public class KubernetesHelper {
 				infoLogger, errorLogger);
 	}
 
-	static void runServerStep(String serverUrl, String jobToken,
-							  String positionStr, String encodedIncludeFiles,
-							  String encodedExcludeFiles, String encodedPlaceholders,
-							  @Nullable String encodedBasePath) {
-		runServerStep(buildSSLFactory(getTrustCertsDir()), serverUrl,
+	static boolean runServerStep(String serverUrl, String jobToken,
+								 String positionStr, String encodedIncludeFiles,
+								 String encodedExcludeFiles, String encodedPlaceholders,
+								 @Nullable String encodedBasePath) {
+		return runServerStep(buildSSLFactory(getTrustCertsDir()), serverUrl,
 				jobToken, positionStr, encodedIncludeFiles, encodedExcludeFiles,
 				encodedPlaceholders, encodedBasePath);
 	}
 
-	private static void runServerStep(SSLFactory sslFactory, String serverUrl, String jobToken,
-									 String positionStr, String encodedIncludeFiles,
-									 String encodedExcludeFiles, String encodedPlaceholders,
-									 @Nullable String encodedBasePath) {
+	private static boolean runServerStep(SSLFactory sslFactory, String serverUrl, String jobToken,
+								 String positionStr, String encodedIncludeFiles,
+								 String encodedExcludeFiles, String encodedPlaceholders,
+								 @Nullable String encodedBasePath) {
 		List<Integer> position = parseStepPosition(positionStr);
 		String basePath = null;
 		if (encodedBasePath != null) {
@@ -890,23 +895,23 @@ public class KubernetesHelper {
 		Collection<String> includeFiles = decodeCommandArgAsCollection(encodedIncludeFiles);
 		Collection<String> excludeFiles = decodeCommandArgAsCollection(encodedExcludeFiles);
 		Collection<String> placeholders = decodeCommandArgAsCollection(encodedPlaceholders);
-		
+
 		TaskLogger logger = new TaskLogger() {
 
 			@Override
 			public void log(String message, String sessionId) {
 				KubernetesHelper.logger.info(message);
 			}
-			
+
 		};
-		runServerStep(sslFactory, serverUrl, jobToken, position, basePath, includeFiles, excludeFiles,
+		return runServerStep(sslFactory, serverUrl, jobToken, position, basePath, includeFiles, excludeFiles,
 				placeholders, getBuildHome(), logger);
 	}
 
-	public static void runServerStep(SSLFactory sslFactory, String serverUrl, String jobToken,
-									 List<Integer> position, @Nullable String basePath,
-									 Collection<String> includeFiles, Collection<String> excludeFiles,
-									 Collection<String> placeholders, File buildHome, TaskLogger logger) {
+	public static boolean runServerStep(SSLFactory sslFactory, String serverUrl, String jobToken,
+													List<Integer> position, @Nullable String basePath,
+													Collection<String> includeFiles, Collection<String> excludeFiles,
+													Collection<String> placeholders, File buildHome, TaskLogger logger) {
 		Map<String, String> placeholderValues = readPlaceholderValues(buildHome, placeholders);
 		File baseDir = new File(buildHome, "workspace");
 		if (basePath != null) 
@@ -915,9 +920,9 @@ public class KubernetesHelper {
 		includeFiles = replacePlaceholders(includeFiles, placeholderValues); 
 		excludeFiles = replacePlaceholders(excludeFiles, placeholderValues); 
 		
-		Map<String, byte[]> files = runServerStep(sslFactory, serverUrl, jobToken, position, baseDir,
+		var result = runServerStep(sslFactory, serverUrl, jobToken, position, baseDir,
 				includeFiles, excludeFiles, placeholderValues, logger);
-		for (Map.Entry<String, byte[]> entry: files.entrySet()) {
+		for (Map.Entry<String, byte[]> entry: result.getOutputFiles().entrySet()) {
 			try {
 				FileUtils.writeByteArrayToFile(
 						new File(buildHome, entry.getKey()), 
@@ -926,34 +931,35 @@ public class KubernetesHelper {
 				throw new RuntimeException(e);
 			}
 		}
+		return result.isSuccessful();
 	}
 	
-	public static Map<String, byte[]> runServerStep(SSLFactory sslFactory, String serverUrl, String jobToken,
-													List<Integer> position, File baseDir,
-													Collection<String> includeFiles, Collection<String> excludeFiles,
-													Map<String, String> placeholderValues, TaskLogger logger) {
+	public static ServerStepResult runServerStep(SSLFactory sslFactory, String serverUrl, String jobToken,
+												 List<Integer> position, File baseDir,
+												 Collection<String> includeFiles, Collection<String> excludeFiles,
+												 Map<String, String> placeholderValues, TaskLogger logger) {
 		Client client = buildRestClient(sslFactory);
 		client.property(ClientProperties.REQUEST_ENTITY_PROCESSING, "CHUNKED");
 		try {
 			WebTarget target = client.target(serverUrl)
 					.path("~api/k8s/run-server-step")
 					.queryParam("jobToken", jobToken);
-			Invocation.Builder builder =  target.request();
+			Invocation.Builder builder = target.request();
 
 			StreamingOutput output = os -> {
 				writeInt(os, position.size());
-				for (int each: position)
+				for (int each : position)
 					writeInt(os, each);
 
 				writeInt(os, placeholderValues.size());
-				for (Map.Entry<String, String> entry: placeholderValues.entrySet()) {
+				for (Map.Entry<String, String> entry : placeholderValues.entrySet()) {
 					writeString(os, entry.getKey());
 					writeString(os, entry.getValue());
 				}
 
 				TarUtils.tar(baseDir, includeFiles, excludeFiles, os, false);
-		   };
-			
+			};
+
 			try (Response response = builder.post(Entity.entity(output, MediaType.APPLICATION_OCTET_STREAM))) {
 				checkStatus(response);
 				try (InputStream is = response.readEntity(InputStream.class)) {
@@ -965,7 +971,7 @@ public class KubernetesHelper {
 					return deserialize(bytes);
 				} catch (IOException e) {
 					throw new RuntimeException(e);
-				} 
+				}
 			}
 		} finally {
 			client.close();
@@ -1170,13 +1176,7 @@ public class KubernetesHelper {
 
 			HostnameVerifier basicVerifier = HostnameVerifierUtils.createBasic();
 			HostnameVerifier fenixVerifier = HostnameVerifierUtils.createFenix();
-			builder.withHostnameVerifier(new HostnameVerifier() {
-				@Override
-				public boolean verify(String hostname, SSLSession session) {
-					return basicVerifier.verify(hostname, session) || fenixVerifier.verify(hostname, session);
-				}
-
-			});
+			builder.withHostnameVerifier((hostname, session) -> basicVerifier.verify(hostname, session) || fenixVerifier.verify(hostname, session));
 		}
 		return builder.build();
 	}
@@ -1265,6 +1265,12 @@ public class KubernetesHelper {
 		if (sslFactory != null)
 			builder.sslContext(sslFactory.getSslContext()).hostnameVerifier(sslFactory.getHostnameVerifier());
 		return builder.build();
+	}
+
+	public static String formatDuration(long durationMillis) {
+		if (durationMillis < 0)
+			durationMillis = 0;
+		return DurationFormatUtils.formatDurationWords(durationMillis, true, true);
 	}
 
 }

@@ -1,10 +1,10 @@
 package io.onedev.k8shelper;
 
-import java.util.ArrayList;
-import java.util.List;
-
 import com.google.common.base.Joiner;
 import com.google.common.base.Preconditions;
+
+import java.util.ArrayList;
+import java.util.List;
 
 import static io.onedev.k8shelper.ExecuteCondition.*;
 
@@ -24,20 +24,23 @@ public class CompositeFacade implements StepFacade {
 
 	@Override
 	public boolean execute(LeafHandler handler, List<Integer> position) {
-		boolean failed = false;
+		var allPreviousStepsWereSuccessful = true;
+		var previousStepWasSuccessful = true;
 		for (int i = 0; i<actions.size(); i++) {
 			Action action = actions.get(i);
 			List<Integer> newPosition = new ArrayList<>(position);
 			newPosition.add(i);
 			if (action.getCondition() == ALWAYS 
-					|| action.getCondition() == ALL_PREVIOUS_STEPS_WERE_SUCCESSFUL && !failed ) {
-				if (!action.getExecutable().execute(handler, newPosition))
-					failed = true;
+					|| action.getCondition() == ALL_PREVIOUS_STEPS_WERE_SUCCESSFUL && allPreviousStepsWereSuccessful
+					|| action.getCondition() == PREVIOUS_STEP_WAS_SUCCESSFUL && previousStepWasSuccessful) {
+				var successful = action.getExecutable().execute(handler, newPosition);
+				allPreviousStepsWereSuccessful &= successful;
+				previousStepWasSuccessful = successful;
 			} else {
 				action.getExecutable().skip(handler, newPosition);
 			}
 		}
-		return !failed;
+		return allPreviousStepsWereSuccessful;
 	}
 
 	@Override
@@ -61,22 +64,22 @@ public class CompositeFacade implements StepFacade {
 		return null;
 	}
 	
-	public List<String> getNames(List<Integer> position) {
+	public List<String> getPath(List<Integer> position) {
 		Preconditions.checkArgument(!position.isEmpty());
 		
-		List<String> names = new ArrayList<>();
+		List<String> path = new ArrayList<>();
 		List<Integer> positionCopy = new ArrayList<>(position);
 		Action action = actions.get(positionCopy.remove(0));
-		names.add(action.getName());
+		path.add(action.getName());
 		if (!positionCopy.isEmpty()) {
 			CompositeFacade executable = (CompositeFacade) action.getExecutable();
-			names.addAll(executable.getNames(positionCopy));
+			path.addAll(executable.getPath(positionCopy));
 		}
-		return names;
+		return path;
 	}
 	
-	public String getNamesAsString(List<Integer> position) {
-		return Joiner.on(" -> ").join(getNames(position));
+	public String getPathAsString(List<Integer> position) {
+		return Joiner.on(" -> ").join(getPath(position));
 	}
 	
 }

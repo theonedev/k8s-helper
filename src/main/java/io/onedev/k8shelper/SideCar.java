@@ -15,10 +15,11 @@ public class SideCar {
 			String serverUrl = checkNotNull(System.getenv(KubernetesHelper.ENV_SERVER_URL));
 			String jobToken = checkNotNull(System.getenv(KubernetesHelper.ENV_JOB_TOKEN));
 
-			KubernetesHelper.sidecar(serverUrl, jobToken, args.length > 0);
-
 			logger.info(KubernetesHelper.LOG_END_MESSAGE);
-			System.exit(0);
+			if (KubernetesHelper.sidecar(serverUrl, jobToken, args.length > 0))
+				System.exit(0);
+			else
+				System.exit(1);
 		} catch (Exception e) {
 			logger.error(TaskLogger.wrapWithAnsiError(TaskLogger.toString(null, e)));
 			logger.info(KubernetesHelper.LOG_END_MESSAGE);
