@@ -215,7 +215,7 @@ public class KubernetesHelper {
 						"  echo '" + TaskLogger.wrapWithAnsiSuccess("Step \"" + escapedStepPath + "\" is successful") + "'",
 						"  touch " + markPrefix + ".successful",
 						"else",
-						"  echo " + TaskLogger.wrapWithAnsiError("Command exited with code $exitCode"),
+						"  echo \"" + TaskLogger.wrapWithAnsiError("Command exited with code $exitCode") + "\"",
 						"  echo '" + TaskLogger.wrapWithAnsiError("Step \"" + escapedStepPath + "\" is failed") + "'",
 						"  touch " + markPrefix + ".failed",
 						"fi",
