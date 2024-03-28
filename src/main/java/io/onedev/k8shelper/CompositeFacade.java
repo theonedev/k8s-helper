@@ -6,7 +6,8 @@ import com.google.common.base.Preconditions;
 import java.util.ArrayList;
 import java.util.List;
 
-import static io.onedev.k8shelper.ExecuteCondition.*;
+import static io.onedev.k8shelper.ExecuteCondition.ALL_PREVIOUS_STEPS_WERE_SUCCESSFUL;
+import static io.onedev.k8shelper.ExecuteCondition.ALWAYS;
 
 public class CompositeFacade implements StepFacade {
 
@@ -25,17 +26,14 @@ public class CompositeFacade implements StepFacade {
 	@Override
 	public boolean execute(LeafHandler handler, List<Integer> position) {
 		var allPreviousStepsWereSuccessful = true;
-		var previousStepWasSuccessful = true;
 		for (int i = 0; i<actions.size(); i++) {
 			Action action = actions.get(i);
 			List<Integer> newPosition = new ArrayList<>(position);
 			newPosition.add(i);
 			if (action.getCondition() == ALWAYS 
-					|| action.getCondition() == ALL_PREVIOUS_STEPS_WERE_SUCCESSFUL && allPreviousStepsWereSuccessful
-					|| action.getCondition() == PREVIOUS_STEP_WAS_SUCCESSFUL && previousStepWasSuccessful) {
+					|| action.getCondition() == ALL_PREVIOUS_STEPS_WERE_SUCCESSFUL && allPreviousStepsWereSuccessful) {
 				var successful = action.getExecutable().execute(handler, newPosition);
 				allPreviousStepsWereSuccessful &= successful;
-				previousStepWasSuccessful = successful;
 			} else {
 				action.getExecutable().skip(handler, newPosition);
 			}
