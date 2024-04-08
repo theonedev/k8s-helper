@@ -36,6 +36,7 @@ import java.util.regex.Pattern;
 import static io.onedev.commons.utils.TarUtils.untar;
 import static io.onedev.k8shelper.CacheHelper.tar;
 import static io.onedev.k8shelper.CacheHelper.untar;
+import static io.onedev.k8shelper.SetupCacheFacade.UploadStrategy.*;
 import static java.nio.charset.StandardCharsets.UTF_8;
 import static java.util.Base64.getDecoder;
 import static java.util.Base64.getEncoder;
@@ -378,12 +379,8 @@ public class KubernetesHelper {
 								command += " " + getEncoder().encodeToString(bytes);
 							}
 						} else if (facade instanceof SetupCacheFacade) {
-							SetupCacheFacade setupCacheFacade = (SetupCacheFacade) facade;
-							command = String.format("java -classpath \"%s\" io.onedev.k8shelper.SetupCache %s %s %s %s",
-									classPath, positionStr,
-									getEncoder().encodeToString(setupCacheFacade.getKey().getBytes(UTF_8)),
-									encodeAsCommandArg(setupCacheFacade.getLoadKeys()),
-									getEncoder().encodeToString(Joiner.on('\n').join(setupCacheFacade.getPaths()).getBytes(UTF_8)));
+							command = String.format("java -classpath \"%s\" io.onedev.k8shelper.SetupCache %s",
+									classPath, positionStr);
 						} else {
 							ServerSideFacade serverSideFacade = (ServerSideFacade) facade;
 
@@ -439,9 +436,11 @@ public class KubernetesHelper {
 			if (StringUtils.isNotBlank(errorMessage)) {
 				throw new RuntimeException(String.format("Http request failed (status code: %d, error message: %s)", 
 						status, errorMessage));
-			} else {
+			} else if (status >= 500){
 				throw new RuntimeException("Http request failed with status " + status 
 						+ ", check server log for details");
+			} else {
+				throw new RuntimeException("Http request failed with status " + status);
 			}
 		} 
 	}
@@ -757,26 +756,46 @@ public class KubernetesHelper {
 					"this does not matter", null, null, "this does not matter", false);
 			return facade.execute(commandHandler, Lists.newArrayList(0));
 		} else {
-			K8sJobData jobData = readJobData();
-			List<Action> actions = jobData.getActions();
+			var jobData = readJobData();
+			var actions = jobData.getActions();
 
 			var successful = new CompositeFacade(actions).execute(commandHandler, new ArrayList<>());
 			if (successful) {
 				var sslFactory = buildSSLFactory(getTrustCertsDir());
-				Map<String, String> setupCachePositions = readSetupCachePositions();
-				Set<String> hitCacheKeys = readHitCacheKeys();
-				for (var entry: setupCachePositions.entrySet()) {
-					var cacheKey = entry.getKey();
-					var cacheInfo = cacheInfos.get(entry.getValue());
-					if (cacheInfo != null && !hitCacheKeys.contains(cacheKey)) {
-						var cacheDirs = new LinkedHashMap<String, File>();
-						for (var cachePath: cacheInfo.getPaths())
-							cacheDirs.put(cachePath, getWorkspace().toPath().resolve(cachePath).toFile());
-						if (uploadCache(serverUrl, jobToken, cacheKey, cacheDirs,
-								cacheInfo.getUploadAccessToken(), sslFactory)) {
-							logger.info("Uploaded cache (key: {}, paths: {})", cacheKey, cacheDirs.keySet());
+				var cacheConfigs = readCacheConfigs();
+				var hitCacheKeys = readHitCacheKeys();
+				var matchedCacheKeys = readMatchedCacheKeys();
+				for (var cacheConfig: cacheConfigs) {
+					var cacheKey = cacheConfig.getKey();
+					var cachePaths = cacheConfig.getPaths();
+					var uploadStrategy = cacheConfig.getUploadStrategy();
+					var uploadProjectPath = cacheConfig.getUploadProjectPath();
+					var uploadAccessToken = cacheConfig.getUploadAccessToken();
+					var cacheDirs = new ArrayList<File>();
+					for (var cachePath: cachePaths)
+						cacheDirs.add(getWorkspace().toPath().resolve(cachePath).toFile());
+					if (uploadStrategy == ALWAYS_UPLOAD) {
+						if (uploadCache(serverUrl, jobToken, cacheKey, cachePaths, cacheDirs,
+								uploadProjectPath, uploadAccessToken, sslFactory)) {
+							logger.info("Uploaded " + cacheConfig.getUploadDescription());
 						} else {
-							logger.warn("Not authorized to upload cache (key: {}, paths: {})", cacheKey, cacheDirs.keySet());
+							logger.warn("Not authorized to upload " + cacheConfig.getUploadDescription());
+						}
+					} else if (uploadStrategy == UPLOAD_IF_NOT_HIT) {
+						if (!hitCacheKeys.contains(cacheConfig.getKey())) {
+							if (uploadCache(serverUrl, jobToken, cacheKey, cachePaths, cacheDirs,
+									uploadProjectPath, uploadAccessToken, sslFactory))
+								logger.info("Uploaded " + cacheConfig.getUploadDescription());
+							else
+								logger.warn("Not authorized to upload " + cacheConfig.getUploadDescription());
+						}
+					} else if (uploadStrategy == UPLOAD_IF_NOT_FOUND) {
+						if (!hitCacheKeys.contains(cacheKey) && !matchedCacheKeys.contains(cacheKey)) {
+							if (uploadCache(serverUrl, jobToken, cacheKey, cachePaths, cacheDirs,
+									uploadProjectPath, uploadAccessToken, sslFactory))
+								logger.info("Uploaded " + cacheConfig.getUploadDescription());
+							else
+								logger.warn("Not authorized to upload " + cacheConfig.getUploadDescription());
 						}
 					}
 				}
@@ -978,19 +997,21 @@ public class KubernetesHelper {
 		}
 	}
 
-	private static File getSetupCachePositionsFile() {
-		return new File(getMarkDir(), "setup-cache-positions");
+	private static File getCacheConfigsFile() {
+		return new File(getMarkDir(), "caches");
 	}
 
 	private static File getHitCacheKeysFile() {
 		return new File(getMarkDir(), "hit-cache-keys");
 	}
 
-	private static void writeSetupCachePositions(Map<String, String> setupCachePositions) {
+	private static File getMatchedCacheKeysFile() {
+		return new File(getMarkDir(), "matched-cache-keys");
+	}
+
+	private static void writeCacheConfigs(List<SetupCacheFacade> cacheConfigs) {
 		try {
-			writeByteArrayToFile(
-					getSetupCachePositionsFile(),
-					serialize((Serializable) setupCachePositions));
+			writeByteArrayToFile(getCacheConfigsFile(), serialize((Serializable) cacheConfigs));
 		} catch (IOException e) {
 			throw new RuntimeException(e);
 		}
@@ -1006,8 +1027,18 @@ public class KubernetesHelper {
 		}
 	}
 
-	private static Map<String, String> readSetupCachePositions() {
-		var file = getSetupCachePositionsFile();
+	private static void writeMatchedCacheKeys(Set<String> matchedCacheKeys) {
+		try {
+			writeByteArrayToFile(
+					getMatchedCacheKeysFile(),
+					serialize((Serializable) matchedCacheKeys));
+		} catch (IOException e) {
+			throw new RuntimeException(e);
+		}
+	}
+
+	private static List<SetupCacheFacade> readCacheConfigs() {
+		var file = getCacheConfigsFile();
 		if (file.exists()) {
 			try {
 				return deserialize(readFileToByteArray((file)));
@@ -1015,7 +1046,7 @@ public class KubernetesHelper {
 				throw new RuntimeException(e);
 			}
 		} else {
-			return new HashMap<>();
+			return new ArrayList<>();
 		}
 	}
 
@@ -1032,39 +1063,59 @@ public class KubernetesHelper {
 		}
 	}
 
-	static void setupCache(String serverUrl, String jobToken, String positionStr,
-						   String encodedCacheKey, String encodedCacheLoadKeys,
-						   String encodedCachePaths) {
-		var cacheKey = new String(getDecoder().decode(encodedCacheKey.getBytes(UTF_8)), UTF_8);
-		cacheKey = replacePlaceholders(cacheKey, getBuildHome());
-		List<String> cacheLoadKeys = decodeCommandArgAsCollection(encodedCacheLoadKeys);
-		cacheLoadKeys = cacheLoadKeys.stream()
+	private static Set<String> readMatchedCacheKeys() {
+		var file = getMatchedCacheKeysFile();
+		if (file.exists()) {
+			try {
+				return deserialize(readFileToByteArray((file)));
+			} catch (IOException e) {
+				throw new RuntimeException(e);
+			}
+		} else {
+			return new HashSet<>();
+		}
+	}
+
+	static void setupCache(String serverUrl, String jobToken, String positionStr) {
+		var position = parseStepPosition(positionStr);
+		var jobData = readJobData();
+		var actions = jobData.getActions();
+		var cacheConfig = (SetupCacheFacade) new CompositeFacade(actions).getFacade(position);
+
+		var cacheKey = replacePlaceholders(cacheConfig.getKey(), getBuildHome());
+		var loadKeys = cacheConfig.getLoadKeys().stream()
 				.map(it -> replacePlaceholders(it, getBuildHome()))
 				.collect(toList());
+		var cachePaths = cacheConfig.getPaths();
 		var sslFactory = buildSSLFactory(getTrustCertsDir());
 
-		var cacheDirs = new LinkedHashMap<String, File>();
-		for (var cachePath: Splitter.on('\n').splitToList(new String(getDecoder().decode(encodedCachePaths.getBytes(UTF_8)), UTF_8))) {
+		var cacheDirs = new ArrayList<File>();
+		for (var cachePath: cachePaths) {
 			var cacheDir = getWorkspace().toPath().resolve(cachePath).toFile();
 			FileUtils.createDir(cacheDir);
-			cacheDirs.put(cachePath, cacheDir);
+			cacheDirs.add(cacheDir);
 		}
 
-		Map<String, String> setupCachePositions = readSetupCachePositions();
+		var cacheConfigs = readCacheConfigs();
 		Set<String> hitCacheKeys = readHitCacheKeys();
+		Set<String> matchedCacheKeys = readMatchedCacheKeys();
 
-		if (setupCachePositions.putIfAbsent(cacheKey, positionStr) != null)
-			throw new ExplicitException("Duplicate cache key: " + cacheKey);
+		cacheConfig = new SetupCacheFacade(cacheKey, loadKeys, cachePaths, cacheConfig.getUploadStrategy(),
+				cacheConfig.getUploadProjectPath(), cacheConfig.getUploadAccessToken());
+		cacheConfigs.add(cacheConfig);
 
-		if (downloadCache(serverUrl, jobToken, cacheKey, cacheDirs, sslFactory)) {
-			logger.info("Hit cache (key: {}, paths: {})", cacheKey, cacheDirs.keySet());
+		if (downloadCache(serverUrl, jobToken, cacheKey, cachePaths, cacheDirs, sslFactory)) {
+			logger.info("Hit " + cacheConfig);
 			hitCacheKeys.add(cacheKey);
 			writeHitCacheKeys(hitCacheKeys);
-		} else if (!cacheLoadKeys.isEmpty()) {
-			if (downloadCache(serverUrl, jobToken, cacheLoadKeys, cacheDirs, sslFactory))
-				logger.info("Matched cache (load keys: {}, paths: {})", cacheLoadKeys, cacheDirs.keySet());
+		} else if (!loadKeys.isEmpty()) {
+			if (downloadCache(serverUrl, jobToken, loadKeys, cachePaths, cacheDirs, sslFactory)) {
+				logger.info("Matched " + cacheConfig);
+				matchedCacheKeys.add(cacheKey);
+				writeMatchedCacheKeys(matchedCacheKeys);
+			}
 		}
-		writeSetupCachePositions(setupCachePositions);
+		writeCacheConfigs(cacheConfigs);
 	}
 
 	public static Collection<String> parsePlaceholders(String string) {
@@ -1185,7 +1236,7 @@ public class KubernetesHelper {
 		Invocation.Builder builder =  target.request();
 		try (Response response = builder.get()){
 			checkStatus(response);
-			try (InputStream is = response.readEntity(InputStream.class)) {
+			try (var is = response.readEntity(InputStream.class)) {
 				if (is.read() == 1) {
 					untar(cacheDirs, is);
 					return true;
@@ -1199,39 +1250,40 @@ public class KubernetesHelper {
 	}
 
 	public static boolean downloadCache(String serverUrl, String jobToken, String cacheKey,
-										LinkedHashMap<String, File> cacheDirs,
+										List<String> cachePaths, List<File> cacheDirs,
 										@Nullable SSLFactory sslFactory) {
 		Client client = KubernetesHelper.buildRestClient(sslFactory);
 		try {
-			WebTarget target = client.target(serverUrl)
+			var target = client.target(serverUrl)
 					.path("~api/k8s/download-cache")
 					.queryParam("jobToken", jobToken)
 					.queryParam("cacheKey", cacheKey)
-					.queryParam("cachePaths", Joiner.on('\n').join(cacheDirs.keySet()));
-			return downloadCache(target, new ArrayList<>(cacheDirs.values()));
+					.queryParam("cachePaths", Joiner.on('\n').join(cachePaths));
+			return downloadCache(target, cacheDirs);
 		} finally {
 			client.close();
 		}
 	}
 
-	public static boolean downloadCache(String serverUrl, String jobToken, List<String> cacheLoadKeys,
-									LinkedHashMap<String, File> cacheDirs, @Nullable SSLFactory sslFactory) {
+	public static boolean downloadCache(String serverUrl, String jobToken, List<String> loadKeys,
+										List<String> cachePaths, List<File> cacheDirs,
+										@Nullable SSLFactory sslFactory) {
 		Client client = KubernetesHelper.buildRestClient(sslFactory);
 		try {
-			WebTarget target = client.target(serverUrl)
+			var target = client.target(serverUrl)
 					.path("~api/k8s/download-cache")
 					.queryParam("jobToken", jobToken)
-					.queryParam("cacheLoadKeys", Joiner.on('\n').join(cacheLoadKeys))
-					.queryParam("cachePaths", Joiner.on('\n').join(cacheDirs.keySet()));
-			return downloadCache(target, new ArrayList<>(cacheDirs.values()));
+					.queryParam("loadKeys", Joiner.on('\n').join(loadKeys))
+					.queryParam("cachePaths", Joiner.on('\n').join(cachePaths));
+			return downloadCache(target, cacheDirs);
 		} finally {
 			client.close();
 		}
 	}
 
 	public static boolean uploadCache(String serverUrl, String jobToken, String cacheKey,
-									  LinkedHashMap<String, File> cacheDirs,
-									  @Nullable String accessToken,
+									  List<String> cachePaths, List<File> cacheDirs,
+									  @Nullable String projectPath, @Nullable String accessToken,
 									  @Nullable SSLFactory sslFactory) {
 		Client client = KubernetesHelper.buildRestClient(sslFactory);
 		client.property(ClientProperties.REQUEST_ENTITY_PROCESSING, "CHUNKED");
@@ -1239,8 +1291,7 @@ public class KubernetesHelper {
 			WebTarget target = client.target(serverUrl)
 					.path("~api/k8s/upload-cache")
 					.queryParam("jobToken", jobToken)
-					.queryParam("cacheKey", cacheKey)
-					.queryParam("cachePaths", Joiner.on('\n').join(cacheDirs.keySet()));
+					.queryParam("projectPath", projectPath);
 			Invocation.Builder builder = target.request();
 			if (accessToken != null)
 				builder.header(AUTHORIZATION, BEARER + " " + accessToken);
@@ -1250,7 +1301,13 @@ public class KubernetesHelper {
 				checkStatus(response);
 			}
 
-			StreamingOutput output = os -> tar(new ArrayList<>(cacheDirs.values()), os);
+			builder = target
+					.queryParam("cacheKey", cacheKey)
+					.queryParam("cachePaths", Joiner.on('\n').join(cachePaths))
+					.request();
+			if (accessToken != null)
+				builder.header(AUTHORIZATION, BEARER + " " + accessToken);
+			StreamingOutput output = os -> tar(cacheDirs, os);
 			try (Response response = builder.post(entity(output, APPLICATION_OCTET_STREAM))) {
 				checkStatus(response);
 				return true;

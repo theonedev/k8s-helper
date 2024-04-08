@@ -1,12 +1,10 @@
 package io.onedev.k8shelper;
 
-import nl.altindag.ssl.SSLFactory;
+import io.onedev.commons.utils.TaskLogger;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import com.google.common.base.Preconditions;
-
-import io.onedev.commons.utils.TaskLogger;
+import static com.google.common.base.Preconditions.checkNotNull;
 
 public class Init {
 
@@ -14,12 +12,8 @@ public class Init {
 	
 	public static void main(String[] args) {
 		try {
-			String serverUrl = System.getenv(KubernetesHelper.ENV_SERVER_URL);
-			if (serverUrl == null)
-				throw new RuntimeException("Environment '" + KubernetesHelper.ENV_SERVER_URL + "' is not defined");
-			String jobToken = Preconditions.checkNotNull(System.getenv(KubernetesHelper.ENV_JOB_TOKEN));
-			if (jobToken == null)
-				throw new RuntimeException("Environment '" + KubernetesHelper.ENV_JOB_TOKEN + "' is not defined");
+			String serverUrl = checkNotNull(System.getenv(KubernetesHelper.ENV_SERVER_URL));
+			String jobToken = checkNotNull(System.getenv(KubernetesHelper.ENV_JOB_TOKEN));
 			
 			KubernetesHelper.init(serverUrl, jobToken, args.length > 0);
 			logger.info(KubernetesHelper.LOG_END_MESSAGE);

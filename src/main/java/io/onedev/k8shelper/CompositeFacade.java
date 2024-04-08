@@ -61,6 +61,15 @@ public class CompositeFacade implements StepFacade {
 		}
 		return null;
 	}
+
+	public LeafFacade getFacade(List<Integer> aPosition) {
+		return traverse((facade, position) -> {
+			if (position.equals(aPosition))
+				return facade;
+			else
+				return null;
+		}, new ArrayList<>());
+	}
 	
 	public List<String> getPath(List<Integer> position) {
 		Preconditions.checkArgument(!position.isEmpty());

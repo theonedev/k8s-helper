@@ -18,10 +18,14 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.nio.ByteBuffer;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Set;
 import java.util.function.Function;
 
 import static io.onedev.k8shelper.KubernetesHelper.replacePlaceholders;
+import static io.onedev.k8shelper.SetupCacheFacade.UploadStrategy.*;
 import static java.util.stream.Collectors.toList;
 
 public abstract class CacheHelper {
@@ -33,68 +37,87 @@ public abstract class CacheHelper {
 
     private final TaskLogger logger;
 
-    private final Map<String, Pair<LinkedHashMap<String, File>, String>> cacheInfos = new HashMap<>();
+    private final List<Pair<SetupCacheFacade, List<File>>> caches = new ArrayList<>();
 
     private final Set<String> hitCacheKeys = new HashSet<>();
+
+    private final Set<String> matchedCacheKeys = new HashSet<>();
 
     public CacheHelper(File buildHome, TaskLogger logger) {
         this.buildHome = buildHome;
         this.logger = logger;
     }
 
-    public void setupCache(SetupCacheFacade cache) {
-        LinkedHashMap<String, File> cacheDirs = new LinkedHashMap<>();
-        for (var cachePath: cache.getPaths()) {
+    public void setupCache(SetupCacheFacade cacheConfig) {
+        List<File> cacheDirs = new ArrayList<>();
+        for (var cachePath: cacheConfig.getPaths()) {
             if (cachePath.contains(".."))
                 throw new ExplicitException("Cache path does not allow to contain '..': " + cachePath);
 
             File cacheDir;
             if (new File(cachePath).isAbsolute())
-                cacheDir = new File(buildHome, "cache/" + (cacheInfos.size() + 1));
+                cacheDir = new File(buildHome, "cache/" + (caches.size() + 1));
             else
                 cacheDir = new File(buildHome, "workspace/" + cachePath);
             FileUtils.createDir(cacheDir);
-            cacheDirs.put(cachePath, cacheDir);
+            cacheDirs.add(cacheDir);
         }
 
-        var cacheInfo = new ImmutablePair<>(cacheDirs, cache.getUploadAccessToken());
-        var cacheKey = replacePlaceholders(cache.getKey(), buildHome);
-        if (cacheInfos.putIfAbsent(cacheKey, cacheInfo) != null)
-            throw new ExplicitException("Duplicate cache key: " + cacheKey);
+        var cacheKey = replacePlaceholders(cacheConfig.getKey(), buildHome);
+        var loadKeys = cacheConfig.getLoadKeys().stream()
+                .map(it -> replacePlaceholders(it, buildHome))
+                .collect(toList());
+        cacheConfig = new SetupCacheFacade(cacheKey, loadKeys, cacheConfig.getPaths(), cacheConfig.getUploadStrategy(),
+                cacheConfig.getUploadProjectPath(), cacheConfig.getUploadAccessToken());
+        caches.add(new ImmutablePair<>(cacheConfig, cacheDirs));
 
-        if (downloadCache(cacheKey, cacheDirs)) {
-            logger.log(String.format("Hit cache (key: %s, paths: %s)", cacheKey, cacheDirs.keySet()));
+        if (downloadCache(cacheKey, cacheConfig.getPaths(), cacheDirs)) {
+            logger.log("Hit " + cacheConfig.getHitDescription());
             hitCacheKeys.add(cacheKey);
-        } else if (!cache.getLoadKeys().isEmpty()) {
-            var cacheLoadKeys = cache.getLoadKeys().stream()
-                    .map(it -> replacePlaceholders(it, buildHome))
-                    .collect(toList());
-            if (downloadCache(cacheLoadKeys, cacheDirs))
-                logger.log(String.format("Matched cache (load keys: %s, paths: %s)", cacheLoadKeys, cacheDirs.keySet()));
+        } else if (!cacheConfig.getLoadKeys().isEmpty()) {
+            if (downloadCache(cacheConfig.getLoadKeys(), cacheConfig.getPaths(), cacheDirs)) {
+                logger.log("Matched " + cacheConfig.getMatchedDescription());
+                matchedCacheKeys.add(cacheKey);
+            }
         }
     }
 
-    public void uploadCaches() {
-        for (var entry: cacheInfos.entrySet()) {
-            var cacheKey = entry.getKey();
-            var cacheInfo = entry.getValue();
-            if (!hitCacheKeys.contains(cacheKey)) {
-                var cacheDirs = cacheInfo.getLeft();
-                if (uploadCache(cacheKey, cacheDirs, cacheInfo.getRight()))
-                    logger.log(String.format("Uploaded cache (key: %s, paths: %s)", cacheKey, cacheDirs.keySet()));
+    public void buildSuccessful() {
+        for (var cache: caches) {
+            var cacheConfig = cache.getLeft();
+            var cacheDirs = cache.getRight();
+            if (cacheConfig.getUploadStrategy() == ALWAYS_UPLOAD) {
+                if (uploadCache(cacheConfig.getKey(), cacheConfig.getPaths(), cacheDirs, cacheConfig.getUploadProjectPath(), cacheConfig.getUploadAccessToken()))
+                    logger.log("Uploaded " + cacheConfig.getUploadDescription());
                 else
-                    logger.log(String.format("Not authorized to upload cache (key: %s, paths: %s)", cacheKey, cacheDirs.keySet()));
+                    logger.warning("Not authorized to upload " + cacheConfig.getUploadDescription());
+            } else if (cacheConfig.getUploadStrategy() == UPLOAD_IF_NOT_HIT) {
+                if (!hitCacheKeys.contains(cacheConfig.getKey())) {
+                    if (uploadCache(cacheConfig.getKey(), cacheConfig.getPaths(), cacheDirs, cacheConfig.getUploadProjectPath(), cacheConfig.getUploadAccessToken()))
+                        logger.log("Uploaded " + cacheConfig.getUploadDescription());
+                    else
+                        logger.warning("Not authorized to upload " + cacheConfig.getUploadDescription());
+                }
+            } else if (cacheConfig.getUploadStrategy() == UPLOAD_IF_NOT_FOUND) {
+                if (!hitCacheKeys.contains(cacheConfig.getKey()) && !matchedCacheKeys.contains(cacheConfig.getKey())) {
+                    if (uploadCache(cacheConfig.getKey(), cacheConfig.getPaths(), cacheDirs, cacheConfig.getUploadProjectPath(), cacheConfig.getUploadAccessToken()))
+                        logger.log("Uploaded " + cacheConfig.getUploadDescription());
+                    else
+                        logger.warning("Not authorized to upload " + cacheConfig.getUploadDescription());
+                }
             }
         }
     }
 
     public void mountVolumes(Commandline docker, Function<String, String> sourceTransformer) {
-        for (var cacheInfo: cacheInfos.values()) {
-            var cacheDirs = cacheInfo.getLeft();
-            for (var entry: cacheDirs.entrySet()) {
-                if (new File(entry.getKey()).isAbsolute()) {
-                    var mountFrom = sourceTransformer.apply(entry.getValue().getAbsolutePath());
-                    docker.addArgs("-v", mountFrom + ":" + entry.getKey());
+        for (var cache: caches) {
+            var cacheConfig = cache.getLeft();
+            var cacheDirs = cache.getRight();
+            for (int i=0; i<cacheConfig.getPaths().size(); i++) {
+                var cachePath = cacheConfig.getPaths().get(i);
+                if (new File(cachePath).isAbsolute()) {
+                    var mountFrom = sourceTransformer.apply(cacheDirs.get(i).getAbsolutePath());
+                    docker.addArgs("-v", mountFrom + ":" + cachePath);
                 }
             }
         }
@@ -145,11 +168,11 @@ public abstract class CacheHelper {
         }
     }
 
-    protected abstract boolean downloadCache(String cacheKey, LinkedHashMap<String, File> cacheDirs);
+    protected abstract boolean downloadCache(String cacheKey, List<String> cachePaths, List<File> cacheDirs);
 
-    protected abstract boolean downloadCache(List<String> cacheLoadKeys, LinkedHashMap<String, File> cacheDirs);
+    protected abstract boolean downloadCache(List<String> loadKeys, List<String> cachePaths, List<File> cacheDirs);
 
-    protected abstract boolean uploadCache(String cacheKey, LinkedHashMap<String, File> cacheDirs,
-                                           @Nullable String accessToken);
+    protected abstract boolean uploadCache(String cacheKey, List<String> cachePaths, List<File> cacheDirs,
+                                           @Nullable String projectPath, @Nullable String accessToken);
 
 }

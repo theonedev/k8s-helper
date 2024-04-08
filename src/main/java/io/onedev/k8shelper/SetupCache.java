@@ -2,6 +2,7 @@ package io.onedev.k8shelper;
 
 import com.google.common.base.Preconditions;
 import io.onedev.commons.utils.TaskLogger;
+import org.apache.commons.lang3.SerializationUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -18,7 +19,7 @@ public class SetupCache {
 			String jobToken = Preconditions.checkNotNull(System.getenv(KubernetesHelper.ENV_JOB_TOKEN));
 			if (jobToken == null)
 				throw new RuntimeException("Environment '" + KubernetesHelper.ENV_JOB_TOKEN + "' is not defined");
-			KubernetesHelper.setupCache(serverUrl, jobToken, args[0], args[1], args[2], args[3]);
+			KubernetesHelper.setupCache(serverUrl, jobToken, args[0]);
 		} catch (Exception e) {
 			logger.error(TaskLogger.wrapWithAnsiError(TaskLogger.toString(null, e)));
 			exitCode = 1;
