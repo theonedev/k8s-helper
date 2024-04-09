@@ -1,4 +1,8 @@
-version: 28
+version: 31
+imports:
+- projectPath: onedev
+  revision: main
+  accessTokenSecret: onedev-token
 jobs:
 - name: Release
   steps:
@@ -21,9 +25,9 @@ jobs:
     runInContainer: true
     image: '@property:buildEnvironment@'
     interpreter: !DefaultInterpreter
-      commands:
-      - set -e
-      - mvn deploy -Dmaven.deploy.username=@job_token@ -Dmaven.deploy.password=@secrets:maven-deploy-password@
+      commands: |
+        set -e
+        mvn deploy -Dmaven.deploy.username=@job_token@ -Dmaven.deploy.password=@secrets:maven-deploy-password@
     useTTY: false
     condition: ALL_PREVIOUS_STEPS_WERE_SUCCESSFUL
   - !BuildImageStep
@@ -41,6 +45,28 @@ jobs:
   triggers:
   - !BranchUpdateTrigger
     branches: main
+  jobDependencies:
+  - jobName: Scan Vulnerabilities
+    requireSuccessful: true
+  retryCondition: never
+  maxRetries: 3
+  retryDelay: 30
+  timeout: 3600
+- name: Scan Vulnerabilities
+  steps:
+  - !CheckoutStep
+    name: checkout
+    cloneCredential: !DefaultCredential {}
+    withLfs: false
+    withSubmodules: false
+    cloneDepth: 1
+    condition: ALL_PREVIOUS_STEPS_WERE_SUCCESSFUL
+  - !ScanDepVulnersStep
+    name: scan
+    recursive: true
+    reportName: Dependency Vulnerabilities
+    failThreshold: HIGH
+    condition: ALL_PREVIOUS_STEPS_WERE_SUCCESSFUL
   retryCondition: never
   maxRetries: 3
   retryDelay: 30
@@ -58,9 +84,9 @@ jobs:
     runInContainer: true
     image: alpine/git:1.0.7
     interpreter: !DefaultInterpreter
-      commands:
-      - git config --global --unset http.extraHeader
-      - git push -f https://robinshine:@secrets:github-token@@@github.com/theonedev/k8s-helper HEAD:main
+      commands: |
+        git config --global --unset http.extraHeader
+        git push -f https://robinshine:@secrets:github-token@@@github.com/theonedev/k8s-helper HEAD:main
     useTTY: false
     condition: ALL_PREVIOUS_STEPS_WERE_SUCCESSFUL
   triggers:
@@ -71,7 +97,3 @@ jobs:
   maxRetries: 3
   retryDelay: 30
   timeout: 3600
-imports:
-- projectPath: onedev
-  revision: main
-  accessTokenSecret: onedev-token
