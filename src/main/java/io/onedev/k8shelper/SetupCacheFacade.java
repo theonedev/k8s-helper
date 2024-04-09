@@ -7,7 +7,7 @@ public class SetupCacheFacade extends LeafFacade {
 
     private static final long serialVersionUID = 1L;
 
-    public enum UploadStrategy {UPLOAD_IF_NOT_HIT, UPLOAD_IF_NOT_FOUND, ALWAYS_UPLOAD, NEVER_UPLOAD}
+    public enum UploadStrategy {UPLOAD_IF_NOT_HIT, UPLOAD_IF_CHANGED}
 
     private final String key;
 
@@ -17,16 +17,20 @@ public class SetupCacheFacade extends LeafFacade {
 
     private final UploadStrategy uploadStrategy;
 
+    private final String changeDetectionExcludes;
+
     private final String uploadProjectPath;
 
     private final String uploadAccessToken;
 
-    public SetupCacheFacade(String key, List<String> loadKeys, List<String> paths, UploadStrategy uploadStrategy,
+    public SetupCacheFacade(String key, List<String> loadKeys, List<String> paths,
+                            UploadStrategy uploadStrategy, @Nullable String changeDetectionExcludes,
                             @Nullable String uploadProjectPath, @Nullable String uploadAccessToken) {
         this.key = key;
         this.loadKeys = loadKeys;
         this.paths = paths;
         this.uploadStrategy = uploadStrategy;
+        this.changeDetectionExcludes = changeDetectionExcludes;
         this.uploadProjectPath = uploadProjectPath;
         this.uploadAccessToken = uploadAccessToken;
     }
@@ -45,6 +49,11 @@ public class SetupCacheFacade extends LeafFacade {
 
     public UploadStrategy getUploadStrategy() {
         return uploadStrategy;
+    }
+
+    @Nullable
+    public String getChangeDetectionExcludes() {
+        return changeDetectionExcludes;
     }
 
     public String getUploadProjectPath() {

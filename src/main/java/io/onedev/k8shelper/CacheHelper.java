@@ -8,9 +8,10 @@ import io.onedev.commons.utils.FileUtils;
 import io.onedev.commons.utils.TarUtils;
 import io.onedev.commons.utils.TaskLogger;
 import io.onedev.commons.utils.command.Commandline;
+import io.onedev.commons.utils.match.WildcardUtils;
 import org.apache.commons.io.IOUtils;
-import org.apache.commons.lang3.tuple.ImmutablePair;
-import org.apache.commons.lang3.tuple.Pair;
+import org.apache.commons.lang3.tuple.ImmutableTriple;
+import org.apache.commons.lang3.tuple.Triple;
 
 import javax.annotation.Nullable;
 import java.io.File;
@@ -18,14 +19,18 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.nio.ByteBuffer;
-import java.util.ArrayList;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Set;
+import java.nio.file.FileVisitResult;
+import java.nio.file.FileVisitor;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.attribute.BasicFileAttributes;
+import java.util.*;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Function;
 
+import static io.onedev.commons.utils.StringUtils.parseQuoteTokens;
 import static io.onedev.k8shelper.KubernetesHelper.replacePlaceholders;
-import static io.onedev.k8shelper.SetupCacheFacade.UploadStrategy.*;
+import static io.onedev.k8shelper.SetupCacheFacade.UploadStrategy.UPLOAD_IF_NOT_HIT;
 import static java.util.stream.Collectors.toList;
 
 public abstract class CacheHelper {
@@ -37,11 +42,9 @@ public abstract class CacheHelper {
 
     private final TaskLogger logger;
 
-    private final List<Pair<SetupCacheFacade, List<File>>> caches = new ArrayList<>();
+    private final List<Triple<SetupCacheFacade, List<File>, Date>> caches = new ArrayList<>();
 
     private final Set<String> hitCacheKeys = new HashSet<>();
-
-    private final Set<String> matchedCacheKeys = new HashSet<>();
 
     public CacheHelper(File buildHome, TaskLogger logger) {
         this.buildHome = buildHome;
@@ -67,43 +70,39 @@ public abstract class CacheHelper {
         var loadKeys = cacheConfig.getLoadKeys().stream()
                 .map(it -> replacePlaceholders(it, buildHome))
                 .collect(toList());
-        cacheConfig = new SetupCacheFacade(cacheKey, loadKeys, cacheConfig.getPaths(), cacheConfig.getUploadStrategy(),
+        cacheConfig = new SetupCacheFacade(cacheKey, loadKeys, cacheConfig.getPaths(),
+                cacheConfig.getUploadStrategy(), cacheConfig.getChangeDetectionExcludes(),
                 cacheConfig.getUploadProjectPath(), cacheConfig.getUploadAccessToken());
-        caches.add(new ImmutablePair<>(cacheConfig, cacheDirs));
+        caches.add(new ImmutableTriple<>(cacheConfig, cacheDirs, new Date()));
 
         if (downloadCache(cacheKey, cacheConfig.getPaths(), cacheDirs)) {
             logger.log("Hit " + cacheConfig.getHitDescription());
             hitCacheKeys.add(cacheKey);
         } else if (!cacheConfig.getLoadKeys().isEmpty()) {
-            if (downloadCache(cacheConfig.getLoadKeys(), cacheConfig.getPaths(), cacheDirs)) {
+            if (downloadCache(cacheConfig.getLoadKeys(), cacheConfig.getPaths(), cacheDirs))
                 logger.log("Matched " + cacheConfig.getMatchedDescription());
-                matchedCacheKeys.add(cacheKey);
-            }
         }
     }
 
-    public void buildSuccessful() {
+    private void uploadCacheThenLog(SetupCacheFacade cacheConfig, List<File> cacheDirs) {
+        if (uploadCache(cacheConfig, cacheDirs))
+            logger.log("Uploaded " + cacheConfig.getUploadDescription());
+        else
+            logger.warning("Not authorized to upload " + cacheConfig.getUploadDescription());
+    }
+
+    public void buildFinished() {
         for (var cache: caches) {
             var cacheConfig = cache.getLeft();
-            var cacheDirs = cache.getRight();
-            if (cacheConfig.getUploadStrategy() == ALWAYS_UPLOAD) {
-                if (uploadCache(cacheConfig.getKey(), cacheConfig.getPaths(), cacheDirs, cacheConfig.getUploadProjectPath(), cacheConfig.getUploadAccessToken()))
-                    logger.log("Uploaded " + cacheConfig.getUploadDescription());
-                else
-                    logger.warning("Not authorized to upload " + cacheConfig.getUploadDescription());
-            } else if (cacheConfig.getUploadStrategy() == UPLOAD_IF_NOT_HIT) {
-                if (!hitCacheKeys.contains(cacheConfig.getKey())) {
-                    if (uploadCache(cacheConfig.getKey(), cacheConfig.getPaths(), cacheDirs, cacheConfig.getUploadProjectPath(), cacheConfig.getUploadAccessToken()))
-                        logger.log("Uploaded " + cacheConfig.getUploadDescription());
-                    else
-                        logger.warning("Not authorized to upload " + cacheConfig.getUploadDescription());
-                }
-            } else if (cacheConfig.getUploadStrategy() == UPLOAD_IF_NOT_FOUND) {
-                if (!hitCacheKeys.contains(cacheConfig.getKey()) && !matchedCacheKeys.contains(cacheConfig.getKey())) {
-                    if (uploadCache(cacheConfig.getKey(), cacheConfig.getPaths(), cacheDirs, cacheConfig.getUploadProjectPath(), cacheConfig.getUploadAccessToken()))
-                        logger.log("Uploaded " + cacheConfig.getUploadDescription());
-                    else
-                        logger.warning("Not authorized to upload " + cacheConfig.getUploadDescription());
+            var cacheDirs = cache.getMiddle();
+            if (cacheConfig.getUploadStrategy() == UPLOAD_IF_NOT_HIT) {
+                if (!hitCacheKeys.contains(cacheConfig.getKey()))
+                    uploadCacheThenLog(cacheConfig, cacheDirs);
+            } else {
+                var changedFile = getChangedFile(cacheDirs, cache.getRight(), cacheConfig);
+                if (changedFile != null) {
+                    logger.log("Cache file changed: " + changedFile);
+                    uploadCacheThenLog(cacheConfig, cacheDirs);
                 }
             }
         }
@@ -112,7 +111,7 @@ public abstract class CacheHelper {
     public void mountVolumes(Commandline docker, Function<String, String> sourceTransformer) {
         for (var cache: caches) {
             var cacheConfig = cache.getLeft();
-            var cacheDirs = cache.getRight();
+            var cacheDirs = cache.getMiddle();
             for (int i=0; i<cacheConfig.getPaths().size(); i++) {
                 var cachePath = cacheConfig.getPaths().get(i);
                 if (new File(cachePath).isAbsolute()) {
@@ -146,6 +145,60 @@ public abstract class CacheHelper {
 
     }
 
+    @Nullable
+    public static String getChangedFile(List<File> cacheDirs, Date sinceDate, SetupCacheFacade cacheConfig) {
+        var excludeFiles = new ArrayList<String>();
+        if (cacheConfig.getChangeDetectionExcludes() != null)
+            Collections.addAll(excludeFiles, parseQuoteTokens(cacheConfig.getChangeDetectionExcludes()));
+        for (var cacheDir: cacheDirs) {
+            try {
+                var changedFile = new AtomicReference<String>(null);
+                Files.walkFileTree(cacheDir.toPath(), new FileVisitor<>() {
+                    @Override
+                    public FileVisitResult preVisitDirectory(Path dir, BasicFileAttributes attrs) {
+                        if (attrs.isSymbolicLink())
+                            return FileVisitResult.SKIP_SUBTREE;
+                        else
+                            return FileVisitResult.CONTINUE;
+                    }
+
+                    @Override
+                    public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) {
+                        if (attrs.isSymbolicLink())
+                            return FileVisitResult.SKIP_SUBTREE;
+                        for (var excludeFile: excludeFiles) {
+                            if (WildcardUtils.matchPath(excludeFile, cacheDir.toPath().relativize(file).toString()))
+                                return FileVisitResult.CONTINUE;
+                        }
+                        if (attrs.creationTime().toMillis() > sinceDate.getTime()
+                                || attrs.lastModifiedTime().toMillis() > sinceDate.getTime()) {
+                            changedFile.set(file.toString());
+                            return FileVisitResult.TERMINATE;
+                        } else {
+                            return FileVisitResult.CONTINUE;
+                        }
+                    }
+
+                    @Override
+                    public FileVisitResult visitFileFailed(Path file, IOException exc) throws IOException {
+                        throw exc;
+                    }
+
+                    @Override
+                    public FileVisitResult postVisitDirectory(Path dir, IOException exc) {
+                        return FileVisitResult.CONTINUE;
+                    }
+
+                });
+                if (changedFile.get() != null)
+                    return changedFile.get();
+            } catch (IOException e) {
+                throw new RuntimeException(e);
+            }
+        }
+        return null;
+    }
+
     public static void untar(List<File> cacheDirs, InputStream is) {
         var buffer = new byte[MARK_BUFFER_SIZE];
         try {
@@ -172,7 +225,6 @@ public abstract class CacheHelper {
 
     protected abstract boolean downloadCache(List<String> loadKeys, List<String> cachePaths, List<File> cacheDirs);
 
-    protected abstract boolean uploadCache(String cacheKey, List<String> cachePaths, List<File> cacheDirs,
-                                           @Nullable String projectPath, @Nullable String accessToken);
+    protected abstract boolean uploadCache(SetupCacheFacade cacheConfig, List<File> cacheDirs);
 
 }
