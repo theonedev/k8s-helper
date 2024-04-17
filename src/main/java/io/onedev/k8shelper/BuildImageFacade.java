@@ -1,13 +1,17 @@
 package io.onedev.k8shelper;
 
+import io.onedev.commons.bootstrap.Bootstrap;
 import io.onedev.commons.utils.ExplicitException;
+import io.onedev.commons.utils.FileUtils;
 import io.onedev.commons.utils.PathUtils;
-import io.onedev.commons.utils.TaskLogger;
+import io.onedev.commons.utils.TarUtils;
 import io.onedev.commons.utils.command.Commandline;
 import io.onedev.commons.utils.command.LineConsumer;
+import io.onedev.commons.utils.command.StreamPumper;
 
 import javax.annotation.Nullable;
 import java.io.File;
+import java.io.IOException;
 import java.io.Serializable;
 
 import static io.onedev.commons.utils.StringUtils.parseQuoteTokens;
@@ -109,8 +113,16 @@ public class BuildImageFacade extends LeafFacade {
 		public void execute(Commandline docker, File hostBuildHome, LineConsumer infoLogger, LineConsumer errorLogger) {
 			if (!PathUtils.isSubPath(destPath))
 				throw new ExplicitException("OCI output path should be a relative path not containing '..'");
+			var destDir = new File(new File(hostBuildHome, "workspace"), destPath);
+			FileUtils.createDir(destDir);
 			docker.addArgs("-o type=oci,dest=-");
-
+			docker.execute(is -> Bootstrap.executorService.submit(() -> {
+				try (is) {
+					TarUtils.untar(is, destDir, false);
+				} catch (IOException e) {
+					throw new RuntimeException(e);
+				}
+			}), errorLogger, null).checkReturnCode();
 		}
 	}
 
