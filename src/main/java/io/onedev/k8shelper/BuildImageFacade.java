@@ -122,7 +122,7 @@ public class BuildImageFacade extends LeafFacade {
 				} catch (IOException e) {
 					throw new RuntimeException(e);
 				}
-			}), errorLogger, null).checkReturnCode();
+			}), StreamPumper.pumpTo(errorLogger), null).checkReturnCode();
 		}
 	}
 
