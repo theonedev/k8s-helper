@@ -27,21 +27,20 @@ public class BuildImageFacade extends LeafFacade {
 	
 	private final Output output;
 
-	private final boolean removeDanglingImages;
-
 	private final String builtInRegistryAccessToken;
+
+	private final String platforms;
 
 	private final String moreOptions;
 
 	public BuildImageFacade(@Nullable String buildPath, @Nullable String dockerFile,
-							Output output, boolean removeDanglingImages,
-							@Nullable String builtInRegistryAccessToken,
-							@Nullable String moreOptions) {
+							Output output, @Nullable String builtInRegistryAccessToken,
+							@Nullable String platforms, @Nullable String moreOptions) {
 		this.buildPath = buildPath;
 		this.dockerfile = dockerFile;
 		this.output = output;
-		this.removeDanglingImages = removeDanglingImages;
 		this.builtInRegistryAccessToken = builtInRegistryAccessToken;
+		this.platforms = platforms;
 		this.moreOptions = moreOptions;
 	}
 
@@ -59,13 +58,14 @@ public class BuildImageFacade extends LeafFacade {
 		return output;
 	}
 
-	public boolean isRemoveDanglingImages() {
-		return removeDanglingImages;
-	}
-
 	@Nullable
 	public String getBuiltInRegistryAccessToken() {
 		return builtInRegistryAccessToken;
+	}
+
+	@Nullable
+	public String getPlatforms() {
+		return platforms;
 	}
 
 	@Nullable
