@@ -9,9 +9,12 @@ public class PowerShellFacade extends CommandFacade {
 
 	private static final long serialVersionUID = 1L;
 
+	private final String powershell;
+
 	public PowerShellFacade(@Nullable String image, @Nullable String runAs, @Nullable String builtInRegistryAccessToken,
-							String commands, boolean useTTY) {
+							String powershell, String commands, boolean useTTY) {
 		super(image, runAs, builtInRegistryAccessToken, commands, useTTY);
+		this.powershell = powershell;
 	}
 
 	@Override
@@ -21,15 +24,15 @@ public class PowerShellFacade extends CommandFacade {
 
 	@Override
 	public Commandline getScriptInterpreter() {
-		return new Commandline("powershell").addArgs("-executionpolicy", "remotesigned", "-file");
+		return new Commandline(powershell).addArgs("-executionpolicy", "remotesigned", "-file");
 	}
 
 	@Override
 	public String[] getShell(boolean isLinux, String workingDir) {
 		if (workingDir != null)
-			return new String[]{"cmd", "/c", String.format("cd %s && powershell", workingDir)};
+			return new String[]{"cmd", "/c", String.format("cd %s && %s", workingDir, powershell)};
 		else
-			return new String[]{"powershell"};
+			return new String[]{powershell};
 	}
 
 	@Override
