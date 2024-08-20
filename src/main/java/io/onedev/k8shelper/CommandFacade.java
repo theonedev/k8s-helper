@@ -11,6 +11,7 @@ import org.apache.commons.lang3.SystemUtils;
 import javax.annotation.Nullable;
 import java.io.File;
 import java.util.List;
+import java.util.Map;
 
 public class CommandFacade extends LeafFacade {
 
@@ -22,16 +23,19 @@ public class CommandFacade extends LeafFacade {
 
 	private final String commands;
 
+	private final Map<String, String> envMap;
+
 	private final String builtInRegistryAccessToken;
-	
+
 	private final boolean useTTY;
 
 	public CommandFacade(@Nullable String image, @Nullable String runAs, @Nullable String builtInRegistryAccessToken,
-						 String commands, boolean useTTY) {
+						 String commands, Map<String, String> envMap, boolean useTTY) {
 		this.image = image;
 		this.runAs = runAs;
 		this.builtInRegistryAccessToken = builtInRegistryAccessToken;
 		this.commands = commands;
+		this.envMap = envMap;
 		this.useTTY = useTTY;
 	}
 
@@ -47,6 +51,10 @@ public class CommandFacade extends LeafFacade {
 
 	public String getCommands() {
 		return commands;
+	}
+
+	public Map<String, String> getEnvMap() {
+		return envMap;
 	}
 
 	@Nullable

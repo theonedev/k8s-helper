@@ -3,6 +3,7 @@ package io.onedev.k8shelper;
 import io.onedev.commons.utils.command.Commandline;
 
 import javax.annotation.Nullable;
+import java.util.HashMap;
 import java.util.List;
 
 public class PowerShellFacade extends CommandFacade {
@@ -13,7 +14,7 @@ public class PowerShellFacade extends CommandFacade {
 
 	public PowerShellFacade(@Nullable String image, @Nullable String runAs, @Nullable String builtInRegistryAccessToken,
 							String powershell, String commands, boolean useTTY) {
-		super(image, runAs, builtInRegistryAccessToken, commands, useTTY);
+		super(image, runAs, builtInRegistryAccessToken, commands, new HashMap<>(), useTTY);
 		this.powershell = powershell;
 	}
 
