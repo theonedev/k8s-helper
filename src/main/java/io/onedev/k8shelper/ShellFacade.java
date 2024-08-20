@@ -22,7 +22,7 @@ public class ShellFacade extends CommandFacade {
 	}
 
 	@Override
-	public String[] getShell(boolean isLinux, String workingDir) {
+	public String[] getShell(boolean isWindows, String workingDir) {
 		if (workingDir != null)
 			return new String[]{shell, "-c", String.format("cd '%s' && '%s'", workingDir, shell)};
 		else

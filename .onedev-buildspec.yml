@@ -33,7 +33,7 @@ jobs:
   - !BuildImageStep
     name: build docker image
     output: !RegistryOutput
-      tags: 1dev/k8s-helper-linux:@build_version@
+      tags: 1dev/k8s-helper:@build_version@
     platforms: linux/amd64,linux/arm64
     condition: ALL_PREVIOUS_STEPS_WERE_SUCCESSFUL
   - !CreateTagStep

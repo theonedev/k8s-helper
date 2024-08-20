@@ -11,8 +11,6 @@ import io.onedev.commons.utils.command.LineConsumer;
 import nl.altindag.ssl.SSLFactory;
 import nl.altindag.ssl.util.CertificateUtils;
 import nl.altindag.ssl.util.HostnameVerifierUtils;
-import org.apache.commons.codec.DecoderException;
-import org.apache.commons.codec.binary.Hex;
 import org.apache.commons.compress.utils.IOUtils;
 import org.apache.commons.lang3.SystemUtils;
 import org.apache.commons.lang3.time.DurationFormatUtils;
@@ -51,13 +49,11 @@ import static org.apache.commons.lang3.SerializationUtils.serialize;
 
 public class KubernetesHelper {
 
-	public static final String IMAGE_REPO_PREFIX = "1dev/k8s-helper";
+	public static final String IMAGE_REPO = "1dev/k8s-helper";
 	
 	public static final String ENV_SERVER_URL = "ONEDEV_SERVER_URL";
 	
 	public static final String ENV_JOB_TOKEN = "ONEDEV_JOB_TOKEN";
-	
-	public static final String ENV_OS_INFO = "ONEDEV_OS_INFO";
 
 	public static final String AUTHORIZATION = "OneDevAuthorization";
 
@@ -82,10 +78,7 @@ public class KubernetesHelper {
 	private static final Logger logger = LoggerFactory.getLogger(KubernetesHelper.class);
 	
 	private static File getBuildHome() {
-		if (SystemUtils.IS_OS_WINDOWS) 
-			return new File("C:\\onedev-build");
-		else 
-			return new File("/onedev-build");
+		return new File("/onedev-build");
 	}
 	
 	private static File getJobDataFile() {
@@ -122,109 +115,55 @@ public class KubernetesHelper {
 		}
 	}
 
-	private static OsInfo getOsInfo() {
-		try {
-			return deserialize(Hex.decodeHex(System.getenv(ENV_OS_INFO).toCharArray()));
-		} catch (DecoderException e) {
-			throw new RuntimeException(e);
-		}
-	}
-	
 	private static void generateCommandScript(List<Integer> position, String stepPath,
-			CommandFacade commandFacade, @Nullable File workingDir, OsInfo osInfo) {
+			CommandFacade commandFacade, @Nullable File workingDir) {
 		try {
 			String positionStr = stringifyStepPosition(position);
 			File commandHome = getCommandDir();
 			File stepScriptFile = new File(commandHome, "step-" + positionStr + commandFacade.getScriptExtension());
-			OsExecution execution = commandFacade.getExecution(osInfo);
-			FileUtils.writeStringToFile(stepScriptFile, commandFacade.normalizeCommands(execution.getCommands()), UTF_8);
+			FileUtils.writeStringToFile(stepScriptFile, commandFacade.normalizeCommands(commandFacade.getCommands()), UTF_8);
 
- 			if (SystemUtils.IS_OS_WINDOWS) { 
-				StringBuilder escapedStepPath = new StringBuilder();
-				for (int i=0; i<stepPath.length(); i++)
-					escapedStepPath.append('^').append(stepPath.charAt(i));
-				
-				File scriptFile = new File(commandHome, positionStr + ".bat");
-				String markPrefix = getMarkDir().getAbsolutePath() + "\\" + positionStr;
-				List<String> scriptContent = Lists.newArrayList(
-						"@echo off",
-						"set \"initialWorkingDir=%cd%\"",
-						":wait",
-						"if exist \"" + markPrefix + ".skip\" (",
-						"  echo " + TaskLogger.wrapWithAnsiNotice("Step ^\"" + escapedStepPath + "^\" is skipped"),
-						"  echo " + LOG_END_MESSAGE,
-						"  goto :eof",
-						")",
-						"if exist \"" + markPrefix + ".error\" (",
-						"  echo " + TaskLogger.wrapWithAnsiNotice("Running step ^\"" + escapedStepPath + "^\"..."),
-						"  type " + markPrefix + ".error",
-						"  copy /y nul " + markPrefix + ".failed > nul",
-						"  echo " + LOG_END_MESSAGE,
-						"  exit 0",
-						")",
-						"if exist \"" + markPrefix + ".start\" goto start",
-						"ping 127.0.0.1 -n 2 > nul",
-						"goto wait",
-						":start",
-						"cd " + (workingDir!=null? workingDir.getAbsolutePath(): "%initialWorkingDir%")
-								+ " && cmd /c xcopy /Y /S /K /Q /H /R C:\\onedev-build\\user\\* C:\\Users\\%USERNAME% > nul"
-								+ " && cmd /c echo " + TaskLogger.wrapWithAnsiNotice("Running step ^\"" + escapedStepPath + "^\"...")
-								+ " && " + commandFacade.getScriptInterpreter() + " " + stepScriptFile.getAbsolutePath(), 
-						"set exit_code=%errorlevel%",
-						"if \"%exit_code%\"==\"0\" (",
-						"	echo " + TaskLogger.wrapWithAnsiSuccess("Step ^\"" + escapedStepPath + "^\" is successful"),
-						"	copy /y nul " + markPrefix + ".successful > nul",
-						") else (",
-						"   echo " + TaskLogger.wrapWithAnsiError("Command exited with code %exit_code%"),
-						"	echo " + TaskLogger.wrapWithAnsiError("Step ^\"" + escapedStepPath + "^\" is failed"),
-						"	copy /y nul " + markPrefix + ".failed > nul",
-						")",
-						"echo " + LOG_END_MESSAGE,
-						"exit 0");
-				FileUtils.writeLines(scriptFile, scriptContent, "\r\n");
-			} else {
-				String escapedStepPath = stepPath.replace("'", "'\\''");
+			String escapedStepPath = stepPath.replace("'", "'\\''");
 
-				File scriptFile = new File(commandHome, positionStr + ".sh");
-				String markPrefix = getMarkDir().getAbsolutePath() + "/" + positionStr;
-				List<String> wrapperScriptContent = Lists.newArrayList(
-						"initialWorkingDir=$(pwd)",
-						"while [ ! -f " + markPrefix + ".start ] && [ ! -f " + markPrefix + ".skip ] && [ ! -f " + markPrefix + ".error ]",
-						"do",
-						"  sleep 0.1",
-						"done",
-						"if [ -f " + markPrefix + ".skip ]",
-						"then",
-						"  echo '" + TaskLogger.wrapWithAnsiNotice("Step \"" + escapedStepPath + "\" is skipped") + "'",
-						"  echo " + LOG_END_MESSAGE,
-						"  exit 0",
-						"fi",
-						"if [ -f " + markPrefix + ".error ]",
-						"then",
-						"  echo '" + TaskLogger.wrapWithAnsiNotice("Running step \"" + escapedStepPath + "\"...") + "'",
-						"  cat " + markPrefix + ".error",
-						"  touch " + markPrefix + ".failed",
-						"  echo " + LOG_END_MESSAGE,
-						"  exit 0",
-						"fi",
-						"cd " + (workingDir!=null? "'" + workingDir.getAbsolutePath() + "'": "$initialWorkingDir") 
-								+ " && test -w $HOME && cp -r -f -p /onedev-build/user/. $HOME || export HOME=/onedev-build/user"
-								+ " && echo '" + TaskLogger.wrapWithAnsiNotice("Running step \"" + escapedStepPath + "\"...") + "'"
-								+ " && " + commandFacade.getScriptInterpreter() + " " + stepScriptFile.getAbsolutePath(), 
-						"exitCode=\"$?\"", 
-						"if [ $exitCode -eq 0 ]",
-						"then",
-						"  echo '" + TaskLogger.wrapWithAnsiSuccess("Step \"" + escapedStepPath + "\" is successful") + "'",
-						"  touch " + markPrefix + ".successful",
-						"else",
-						"  echo \"" + TaskLogger.wrapWithAnsiError("Command exited with code $exitCode") + "\"",
-						"  echo '" + TaskLogger.wrapWithAnsiError("Step \"" + escapedStepPath + "\" is failed") + "'",
-						"  touch " + markPrefix + ".failed",
-						"fi",
-						"echo " + LOG_END_MESSAGE,
-						"exit 0");
-				FileUtils.writeLines(scriptFile, wrapperScriptContent, "\n");
-			}
+			File scriptFile = new File(commandHome, positionStr + ".sh");
+			String markPrefix = getMarkDir().getAbsolutePath() + "/" + positionStr;
+			List<String> wrapperScriptContent = Lists.newArrayList(
+					"initialWorkingDir=$(pwd)",
+					"while [ ! -f " + markPrefix + ".start ] && [ ! -f " + markPrefix + ".skip ] && [ ! -f " + markPrefix + ".error ]",
+					"do",
+					"  sleep 0.1",
+					"done",
+					"if [ -f " + markPrefix + ".skip ]",
+					"then",
+					"  echo '" + TaskLogger.wrapWithAnsiNotice("Step \"" + escapedStepPath + "\" is skipped") + "'",
+					"  echo " + LOG_END_MESSAGE,
+					"  exit 0",
+					"fi",
+					"if [ -f " + markPrefix + ".error ]",
+					"then",
+					"  echo '" + TaskLogger.wrapWithAnsiNotice("Running step \"" + escapedStepPath + "\"...") + "'",
+					"  cat " + markPrefix + ".error",
+					"  touch " + markPrefix + ".failed",
+					"  echo " + LOG_END_MESSAGE,
+					"  exit 0",
+					"fi",
+					"cd " + (workingDir!=null? "'" + workingDir.getAbsolutePath() + "'": "$initialWorkingDir")
+							+ " && test -w $HOME && cp -r -f -p /onedev-build/user/. $HOME || export HOME=/onedev-build/user"
+							+ " && echo '" + TaskLogger.wrapWithAnsiNotice("Running step \"" + escapedStepPath + "\"...") + "'"
+							+ " && " + commandFacade.getScriptInterpreter() + " " + stepScriptFile.getAbsolutePath(),
+					"exitCode=\"$?\"",
+					"if [ $exitCode -eq 0 ]",
+					"then",
+					"  echo '" + TaskLogger.wrapWithAnsiSuccess("Step \"" + escapedStepPath + "\" is successful") + "'",
+					"  touch " + markPrefix + ".successful",
+					"else",
+					"  echo \"" + TaskLogger.wrapWithAnsiError("Command exited with code $exitCode") + "\"",
+					"  echo '" + TaskLogger.wrapWithAnsiError("Step \"" + escapedStepPath + "\" is failed") + "'",
+					"  touch " + markPrefix + ".failed",
+					"fi",
+					"echo " + LOG_END_MESSAGE,
+					"exit 0");
+			FileUtils.writeLines(scriptFile, wrapperScriptContent, "\n");
 		} catch (IOException e) {
 			throw new RuntimeException(e);
 		}
@@ -281,7 +220,6 @@ public class KubernetesHelper {
 	
 	public static void init(String serverUrl, String jobToken, boolean test) {
 		SSLFactory sslFactory = buildSSLFactory(getTrustCertsDir());
-		OsInfo osInfo = getOsInfo();
 		try {
 			FileUtils.createDir(getCommandDir());
 			FileUtils.createDir(getMarkDir());
@@ -301,12 +239,9 @@ public class KubernetesHelper {
 					client.close();
 				}
 				FileUtils.createDir(getWorkspace());
-				var commandsBuilder = new StringBuilder();
-				if (SystemUtils.IS_OS_WINDOWS)  
-					commandsBuilder.append("@echo off\n");
-				commandsBuilder.append("echo hello from container\n");
+				var commandsBuilder = new StringBuilder("echo hello from container\n");
 				generateCommandScript(Lists.newArrayList(0), "test",
-						new CommandFacade("any", null, null, commandsBuilder.toString(), true), getWorkspace(), osInfo);
+						new CommandFacade("any", null, null, commandsBuilder.toString(), true), getWorkspace());
 			} else {
 				K8sJobData jobData;
 				Client client = buildRestClient(sslFactory);
@@ -348,11 +283,7 @@ public class KubernetesHelper {
 						commandFacade = (CommandFacade) facade;
 					} else {
 						String command;
-						String classPath;
-						if (SystemUtils.IS_OS_WINDOWS)
-							classPath = "C:\\k8s-helper\\*";
-						else
-							classPath = "/k8s-helper/*";
+						String classPath = "/k8s-helper/*";
 						if (facade instanceof CheckoutFacade) {
 							CheckoutFacade checkoutFacade = (CheckoutFacade) facade;
 							command = String.format("java -classpath \"%s\" io.onedev.k8shelper.CheckoutCode %s %b %b %d %s",
@@ -372,14 +303,12 @@ public class KubernetesHelper {
 						}
 
 						var commandsBuilder = new StringBuilder();
-						if (SystemUtils.IS_OS_WINDOWS)
-							commandsBuilder.append("@echo off\n");
 						commandsBuilder.append(command).append("\n");
 
 						commandFacade = new CommandFacade("any", null, null, commandsBuilder.toString(), true);
 					}
 
-					generateCommandScript(position, stepPath, commandFacade, workingDir, osInfo);
+					generateCommandScript(position, stepPath, commandFacade, workingDir);
 
 					return null;
 				}, new ArrayList<>());
@@ -649,7 +578,6 @@ public class KubernetesHelper {
 	}
 
 	public static boolean sidecar(String serverUrl, String jobToken, boolean test) {
-		var osInfo = getOsInfo();
 		LeafHandler commandHandler = new LeafHandler() {
 
 			@Override
@@ -671,9 +599,8 @@ public class KubernetesHelper {
 					if (facade instanceof CommandFacade) {
 						CommandFacade commandFacade = (CommandFacade) facade;
 						commandFacade.generatePauseCommand(getBuildHome());
-						var execution = commandFacade.getExecution(osInfo);
-						if (execution.getRunAs() != null)
-							changeOwner(getBuildHome(), execution.getRunAs());
+						if (commandFacade.getRunAs() != null)
+							changeOwner(getBuildHome(), commandFacade.getRunAs());
 					}
 
 					stepScript = replacePlaceholders(stepScript, getBuildHome());
@@ -692,9 +619,6 @@ public class KubernetesHelper {
 					else 
 						errorMessage = Throwables.getStackTraceAsString(e).trim();
 					errorMessage += "\n";
-					if (SystemUtils.IS_OS_WINDOWS)
-						errorMessage = errorMessage.replace("\n", "\r\n");
-					
 					FileUtils.writeFile(file, errorMessage, UTF_8);
 				}
 			

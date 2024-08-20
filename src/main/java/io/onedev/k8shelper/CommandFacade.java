@@ -15,34 +15,38 @@ import java.util.List;
 public class CommandFacade extends LeafFacade {
 
 	private static final long serialVersionUID = 1L;
-	
-	private final List<OsExecution> executions;
+
+	private final String image;
+
+	private final String runAs;
+
+	private final String commands;
 
 	private final String builtInRegistryAccessToken;
 	
 	private final boolean useTTY;
-	
-	public CommandFacade(List<OsExecution> executions, @Nullable String builtInRegistryAccessToken, boolean useTTY) {
-		this.executions = executions;
-		this.builtInRegistryAccessToken = builtInRegistryAccessToken;
-		this.useTTY = useTTY;
-	}
 
 	public CommandFacade(@Nullable String image, @Nullable String runAs, @Nullable String builtInRegistryAccessToken,
 						 String commands, boolean useTTY) {
-		this(Lists.newArrayList(new OsExecution(OsMatcher.ALL, image, runAs, commands)), builtInRegistryAccessToken, useTTY);
+		this.image = image;
+		this.runAs = runAs;
+		this.builtInRegistryAccessToken = builtInRegistryAccessToken;
+		this.commands = commands;
+		this.useTTY = useTTY;
 	}
-	
-	public List<OsExecution> getExecutions() {
-		return executions;
+
+	@Nullable
+	public String getImage() {
+		return image;
 	}
-	
-	public OsExecution getExecution(OsInfo osInfo) {
-		for (OsExecution execution: getExecutions()) {
-			if (execution.getOsMatcher().match(osInfo))
-				return execution;
-		}
-		throw new ExplicitException("This step is not applicable for os: " + osInfo);
+
+	@Nullable
+	public String getRunAs() {
+		return runAs;
+	}
+
+	public String getCommands() {
+		return commands;
 	}
 
 	@Nullable
@@ -97,7 +101,7 @@ public class CommandFacade extends LeafFacade {
 			if (isWindows)
 				return new String[]{"cmd", "/c", String.format("cd '%s' && cmd", workingDir)};
 			else
-				return new String[]{"sh", "-c", String.format("cd '%s' && sh", workingDir)};
+			return new String[]{"sh", "-c", String.format("cd '%s' && sh", workingDir)};
 		} else if (isWindows) {
 			return new String[]{"cmd"};
 		} else {
