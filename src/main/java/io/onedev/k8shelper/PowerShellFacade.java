@@ -5,6 +5,7 @@ import io.onedev.commons.utils.command.Commandline;
 import javax.annotation.Nullable;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 public class PowerShellFacade extends CommandFacade {
 
@@ -13,8 +14,8 @@ public class PowerShellFacade extends CommandFacade {
 	private final String powershell;
 
 	public PowerShellFacade(@Nullable String image, @Nullable String runAs, @Nullable String builtInRegistryAccessToken,
-							String powershell, String commands, boolean useTTY) {
-		super(image, runAs, builtInRegistryAccessToken, commands, new HashMap<>(), useTTY);
+							String powershell, String commands, Map<String, String> envMap, boolean useTTY) {
+		super(image, runAs, builtInRegistryAccessToken, commands, envMap, useTTY);
 		this.powershell = powershell;
 	}
 
