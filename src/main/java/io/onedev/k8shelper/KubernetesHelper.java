@@ -657,22 +657,24 @@ public class KubernetesHelper {
 
 			var successful = new CompositeFacade(actions).execute(commandHandler, new ArrayList<>());
 
-			var sslFactory = buildSSLFactory(getTrustCertsDir());
-			var cacheInfos = readCacheInfos();
-			for (var cacheInfo: cacheInfos) {
-				var cacheConfig = cacheInfo.getLeft();
-				var uploadStrategy = cacheConfig.getUploadStrategy();
-				var cacheDirs = new ArrayList<File>();
-				for (var cachePath: cacheConfig.getPaths())
-					cacheDirs.add(getWorkspace().toPath().resolve(cachePath).toFile());
-				if (uploadStrategy == UPLOAD_IF_NOT_HIT) {
-					if (!cacheInfo.getRight())
-						uploadCacheThenLog(serverUrl, jobToken, cacheConfig, cacheDirs, sslFactory);
-				} else {
-					var changedFile = CacheHelper.getChangedFile(cacheDirs, cacheInfo.getMiddle(), cacheConfig);
-					if (changedFile != null) {
-						logger.info("Cache file changed: " + changedFile);
-						uploadCacheThenLog(serverUrl, jobToken, cacheConfig, cacheDirs, sslFactory);
+			if (successful) {
+				var sslFactory = buildSSLFactory(getTrustCertsDir());
+				var cacheInfos = readCacheInfos();
+				for (var cacheInfo : cacheInfos) {
+					var cacheConfig = cacheInfo.getLeft();
+					var uploadStrategy = cacheConfig.getUploadStrategy();
+					var cacheDirs = new ArrayList<File>();
+					for (var cachePath : cacheConfig.getPaths())
+						cacheDirs.add(getWorkspace().toPath().resolve(cachePath).toFile());
+					if (uploadStrategy == UPLOAD_IF_NOT_HIT) {
+						if (!cacheInfo.getRight())
+							uploadCacheThenLog(serverUrl, jobToken, cacheConfig, cacheDirs, sslFactory);
+					} else {
+						var changedFile = CacheHelper.getChangedFile(cacheDirs, cacheInfo.getMiddle(), cacheConfig);
+						if (changedFile != null) {
+							logger.info("Cache file changed: " + changedFile);
+							uploadCacheThenLog(serverUrl, jobToken, cacheConfig, cacheDirs, sslFactory);
+						}
 					}
 				}
 			}

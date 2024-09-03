@@ -91,18 +91,20 @@ public abstract class CacheHelper {
             logger.warning("Not authorized to upload " + cacheConfig.getUploadDescription());
     }
 
-    public void buildFinished() {
-        for (var cache: caches) {
-            var cacheConfig = cache.getLeft();
-            var cacheDirs = cache.getMiddle();
-            if (cacheConfig.getUploadStrategy() == UPLOAD_IF_NOT_HIT) {
-                if (!hitCacheKeys.contains(cacheConfig.getKey()))
-                    uploadCacheThenLog(cacheConfig, cacheDirs);
-            } else {
-                var changedFile = getChangedFile(cacheDirs, cache.getRight(), cacheConfig);
-                if (changedFile != null) {
-                    logger.log("Cache file changed: " + changedFile);
-                    uploadCacheThenLog(cacheConfig, cacheDirs);
+    public void buildFinished(boolean successful) {
+        if (successful) {
+            for (var cache : caches) {
+                var cacheConfig = cache.getLeft();
+                var cacheDirs = cache.getMiddle();
+                if (cacheConfig.getUploadStrategy() == UPLOAD_IF_NOT_HIT) {
+                    if (!hitCacheKeys.contains(cacheConfig.getKey()))
+                        uploadCacheThenLog(cacheConfig, cacheDirs);
+                } else {
+                    var changedFile = getChangedFile(cacheDirs, cache.getRight(), cacheConfig);
+                    if (changedFile != null) {
+                        logger.log("Cache file changed: " + changedFile);
+                        uploadCacheThenLog(cacheConfig, cacheDirs);
+                    }
                 }
             }
         }
