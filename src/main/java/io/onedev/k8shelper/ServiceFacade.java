@@ -2,6 +2,7 @@ package io.onedev.k8shelper;
 
 import javax.annotation.Nullable;
 import java.io.Serializable;
+import java.util.List;
 import java.util.Map;
 
 public class ServiceFacade implements Serializable {
@@ -20,18 +21,18 @@ public class ServiceFacade implements Serializable {
 	
 	private final String readinessCheckCommand;
 
-	private final String builtInRegistryAccessToken;
+	private final List<RegistryLoginFacade> registryLogins;
 
 	public ServiceFacade(String name, String image, @Nullable String runAs, @Nullable String arguments,
 						 Map<String, String> envs, String readinessCheckCommand,
-						 @Nullable String builtInRegistryAccessToken) {
+						 List<RegistryLoginFacade> registryLogins) {
 		this.name = name;
 		this.image = image;
 		this.runAs = runAs;
 		this.arguments = arguments;
 		this.envs = envs;
 		this.readinessCheckCommand = readinessCheckCommand;
-		this.builtInRegistryAccessToken = builtInRegistryAccessToken;
+		this.registryLogins = registryLogins;
 	}
 
 	public String getName() {
@@ -60,8 +61,8 @@ public class ServiceFacade implements Serializable {
 		return readinessCheckCommand;
 	}
 
-	@Nullable
-	public String getBuiltInRegistryAccessToken() {
-		return builtInRegistryAccessToken;
+	public List<RegistryLoginFacade> getRegistryLogins() {
+		return registryLogins;
 	}
+	
 }

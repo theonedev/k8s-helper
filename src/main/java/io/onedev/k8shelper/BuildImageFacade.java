@@ -13,6 +13,7 @@ import javax.annotation.Nullable;
 import java.io.File;
 import java.io.IOException;
 import java.io.Serializable;
+import java.util.List;
 
 import static io.onedev.commons.utils.StringUtils.parseQuoteTokens;
 import static io.onedev.k8shelper.KubernetesHelper.replacePlaceholders;
@@ -27,19 +28,19 @@ public class BuildImageFacade extends LeafFacade {
 	
 	private final Output output;
 
-	private final String builtInRegistryAccessToken;
+	private final List<RegistryLoginFacade> registryLogins;
 
 	private final String platforms;
 
 	private final String moreOptions;
 
 	public BuildImageFacade(@Nullable String buildPath, @Nullable String dockerFile,
-							Output output, @Nullable String builtInRegistryAccessToken,
+							Output output, List<RegistryLoginFacade> registryLogins,
 							@Nullable String platforms, @Nullable String moreOptions) {
 		this.buildPath = buildPath;
 		this.dockerfile = dockerFile;
 		this.output = output;
-		this.builtInRegistryAccessToken = builtInRegistryAccessToken;
+		this.registryLogins = registryLogins;
 		this.platforms = platforms;
 		this.moreOptions = moreOptions;
 	}
@@ -58,9 +59,8 @@ public class BuildImageFacade extends LeafFacade {
 		return output;
 	}
 
-	@Nullable
-	public String getBuiltInRegistryAccessToken() {
-		return builtInRegistryAccessToken;
+	public List<RegistryLoginFacade> getRegistryLogins() {
+		return registryLogins;
 	}
 
 	@Nullable

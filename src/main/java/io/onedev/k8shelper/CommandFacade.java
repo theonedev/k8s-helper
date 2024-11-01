@@ -25,15 +25,15 @@ public class CommandFacade extends LeafFacade {
 
 	private final Map<String, String> envMap;
 
-	private final String builtInRegistryAccessToken;
+	private final List<RegistryLoginFacade> registryLogins;
 
 	private final boolean useTTY;
 
-	public CommandFacade(@Nullable String image, @Nullable String runAs, @Nullable String builtInRegistryAccessToken,
+	public CommandFacade(@Nullable String image, @Nullable String runAs, List<RegistryLoginFacade> registryLogins,
 						 String commands, Map<String, String> envMap, boolean useTTY) {
 		this.image = image;
 		this.runAs = runAs;
-		this.builtInRegistryAccessToken = builtInRegistryAccessToken;
+		this.registryLogins = registryLogins;
 		this.commands = commands;
 		this.envMap = envMap;
 		this.useTTY = useTTY;
@@ -57,9 +57,8 @@ public class CommandFacade extends LeafFacade {
 		return envMap;
 	}
 
-	@Nullable
-	public String getBuiltInRegistryAccessToken() {
-		return builtInRegistryAccessToken;
+	public List<RegistryLoginFacade> getRegistryLogins() {
+		return registryLogins;
 	}
 
 	public boolean isUseTTY() {

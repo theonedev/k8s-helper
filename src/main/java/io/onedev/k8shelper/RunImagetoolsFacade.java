@@ -1,6 +1,6 @@
 package io.onedev.k8shelper;
 
-import javax.annotation.Nullable;
+import java.util.List;
 
 public class RunImagetoolsFacade extends LeafFacade {
 
@@ -8,20 +8,18 @@ public class RunImagetoolsFacade extends LeafFacade {
 
 	private final String arguments;
 
-	private final String builtInRegistryAccessToken;
+	private final List<RegistryLoginFacade> registryLogins;
 
-	public RunImagetoolsFacade(String arguments, @Nullable String builtInRegistryAccessToken) {
+	public RunImagetoolsFacade(String arguments, List<RegistryLoginFacade> registryLogins) {
 		this.arguments = arguments;
-		this.builtInRegistryAccessToken = builtInRegistryAccessToken;
+		this.registryLogins = registryLogins;
 	}
 
 	public String getArguments() {
 		return arguments;
 	}
 
-	@Nullable
-	public String getBuiltInRegistryAccessToken() {
-		return builtInRegistryAccessToken;
+	public List<RegistryLoginFacade> getRegistryLogins() {
+		return registryLogins;
 	}
-
 }

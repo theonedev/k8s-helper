@@ -1,6 +1,7 @@
 package io.onedev.k8shelper;
 
 import javax.annotation.Nullable;
+import java.util.List;
 import java.util.Map;
 
 public class RunContainerFacade extends LeafFacade {
@@ -19,13 +20,13 @@ public class RunContainerFacade extends LeafFacade {
 
 	private final Map<String, String> volumeMounts;
 
-	private final String builtInRegistryAccessToken;
+	private final List<RegistryLoginFacade> registryLogins;
 
 	private final boolean useTTY;
 
 	public RunContainerFacade(String image, @Nullable String runAs, @Nullable String args,
 							  Map<String, String> envMap, @Nullable String workingDir,
-							  Map<String, String> volumeMounts, @Nullable String builtInRegistryAccessToken,
+							  Map<String, String> volumeMounts, List<RegistryLoginFacade> registryLogins,
 							  boolean useTTY) {
 		this.image = image;
 		this.runAs = runAs;
@@ -33,7 +34,7 @@ public class RunContainerFacade extends LeafFacade {
 		this.envMap = envMap;
 		this.workingDir = workingDir;
 		this.volumeMounts = volumeMounts;
-		this.builtInRegistryAccessToken = builtInRegistryAccessToken;
+		this.registryLogins = registryLogins;
 		this.useTTY = useTTY;
 	}
 
@@ -64,9 +65,8 @@ public class RunContainerFacade extends LeafFacade {
 		return volumeMounts;
 	}
 
-	@Nullable
-	public String getBuiltInRegistryAccessToken() {
-		return builtInRegistryAccessToken;
+	public List<RegistryLoginFacade> getRegistryLogins() {
+		return registryLogins;
 	}
 
 	public boolean isUseTTY() {
