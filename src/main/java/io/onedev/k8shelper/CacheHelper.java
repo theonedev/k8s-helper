@@ -58,10 +58,14 @@ public abstract class CacheHelper {
                 throw new ExplicitException("Cache path does not allow to contain '..': " + cachePath);
 
             File cacheDir;
-            if (new File(cachePath).isAbsolute())
-                cacheDir = new File(buildHome, "cache/" + (caches.size() + 1));
-            else
+            if (new File(cachePath).isAbsolute()) {
+                int count = 0;
+                for (var cache: caches)
+                    count += cache.getMiddle().size();
+                cacheDir = new File(buildHome, "cache/" + (count + cacheDirs.size() + 1));
+            } else {
                 cacheDir = new File(buildHome, "workspace/" + cachePath);
+            }
             FileUtils.createDir(cacheDir);
             cacheDirs.add(cacheDir);
         }
