@@ -105,6 +105,7 @@ public class KubernetesHelper {
 		return new File(getBuildHome(), "mark");
 	}
 	
+	@SuppressWarnings("deprecation")
 	public static String getVersion() {
 		try (InputStream is = KubernetesHelper.class.getClassLoader().getResourceAsStream("k8s-helper-version.properties")) {
 			ByteArrayOutputStream baos = new ByteArrayOutputStream();
@@ -297,7 +298,6 @@ public class KubernetesHelper {
 							command = String.format("java -classpath \"%s\" io.onedev.k8shelper.SetupCache %s",
 									classPath, positionStr);
 						} else {
-							ServerSideFacade serverSideFacade = (ServerSideFacade) facade;
 							command = String.format("java -classpath \"%s\" io.onedev.k8shelper.RunServerSideStep %s",
 									classPath, positionStr);
 						}

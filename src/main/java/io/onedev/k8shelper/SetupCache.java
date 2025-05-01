@@ -1,10 +1,11 @@
 package io.onedev.k8shelper;
 
-import com.google.common.base.Preconditions;
-import io.onedev.commons.utils.TaskLogger;
-import org.apache.commons.lang3.SerializationUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import com.google.common.base.Preconditions;
+
+import io.onedev.commons.utils.TaskLogger;
 
 public class SetupCache {
 
