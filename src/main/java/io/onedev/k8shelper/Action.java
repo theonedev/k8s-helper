@@ -9,17 +9,24 @@ public class Action implements Serializable {
 	private final String name;
 	
 	private final ExecuteCondition condition;
+
+	private final boolean optional;
 	
 	private final StepFacade executable;
 	
-	public Action(String name, StepFacade executable, ExecuteCondition condition) {
+	public Action(String name, StepFacade executable, ExecuteCondition condition, boolean optional) {
 		this.name = name;
 		this.executable = executable;
 		this.condition = condition;
+		this.optional = optional;
 	}
 
 	public String getName() {
 		return name;
+	}
+
+	public boolean isOptional() {
+		return optional;
 	}
 
 	public StepFacade getExecutable() {
