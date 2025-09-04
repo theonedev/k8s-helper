@@ -1037,7 +1037,7 @@ public class KubernetesHelper {
 			}
 
 			HostnameVerifier basicVerifier = HostnameVerifierUtils.createBasic();
-			HostnameVerifier fenixVerifier = HostnameVerifierUtils.createFenix();
+			HostnameVerifier fenixVerifier = HostnameVerifierUtils.createDefault();
 			builder.withHostnameVerifier((hostname, session) -> basicVerifier.verify(hostname, session) || fenixVerifier.verify(hostname, session));
 		}
 		return builder.build();
