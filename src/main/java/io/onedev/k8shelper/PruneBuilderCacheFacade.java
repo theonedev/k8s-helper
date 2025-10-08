@@ -1,6 +1,6 @@
 package io.onedev.k8shelper;
 
-import javax.annotation.Nullable;
+import org.jspecify.annotations.Nullable;
 
 public class PruneBuilderCacheFacade extends LeafFacade {
 

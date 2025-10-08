@@ -20,7 +20,7 @@ import org.glassfish.jersey.client.ClientProperties;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import javax.annotation.Nullable;
+import org.jspecify.annotations.Nullable;
 import javax.net.ssl.HostnameVerifier;
 import javax.ws.rs.client.*;
 import javax.ws.rs.core.MediaType;

@@ -1,6 +1,6 @@
 package io.onedev.k8shelper;
 
-import javax.annotation.Nullable;
+import org.jspecify.annotations.Nullable;
 import java.util.List;
 import java.util.Map;
 

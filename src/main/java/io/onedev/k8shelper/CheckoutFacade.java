@@ -7,7 +7,7 @@ import io.onedev.commons.utils.command.Commandline;
 import io.onedev.commons.utils.command.LineConsumer;
 import org.apache.commons.lang3.SystemUtils;
 
-import javax.annotation.Nullable;
+import org.jspecify.annotations.Nullable;
 import java.io.File;
 
 public class CheckoutFacade extends LeafFacade {
