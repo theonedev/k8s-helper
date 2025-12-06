@@ -1,8 +1,11 @@
 package io.onedev.k8shelper;
 
-import org.jspecify.annotations.Nullable;
+import java.io.File;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+
+import org.jspecify.annotations.Nullable;
 
 public class RunContainerFacade extends LeafFacade {
 
@@ -72,4 +75,25 @@ public class RunContainerFacade extends LeafFacade {
 	public boolean isUseTTY() {
 		return useTTY;
 	}
+
+	public RunContainerFacade replacePlaceholders(File buildHome) {
+		var image = KubernetesHelper.replacePlaceholders(this.image, buildHome);
+		var runAs = this.runAs;
+		if (runAs != null)
+			runAs = KubernetesHelper.replacePlaceholders(runAs, buildHome);
+		var args = this.args;
+		if (args != null)
+			args = KubernetesHelper.replacePlaceholders(args, buildHome);
+		var workingDir = this.workingDir;
+		if (workingDir != null)
+			workingDir = KubernetesHelper.replacePlaceholders(workingDir, buildHome);
+		var volumeMounts = new HashMap<String, String>();
+		for (var entry: this.volumeMounts.entrySet()) {
+			volumeMounts.put(
+				KubernetesHelper.replacePlaceholders(entry.getKey(), buildHome), 
+				KubernetesHelper.replacePlaceholders(entry.getValue(), buildHome));
+		}
+		return new RunContainerFacade(image, runAs, args, envMap, workingDir, volumeMounts, registryLogins, useTTY);
+	}
+	
 }
