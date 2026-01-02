@@ -4,9 +4,8 @@ import java.io.File;
 import java.util.List;
 import java.util.Map;
 
-import org.jspecify.annotations.Nullable;
-
 import org.apache.commons.lang3.SystemUtils;
+import org.jspecify.annotations.Nullable;
 
 import com.google.common.base.CharMatcher;
 import com.google.common.base.Splitter;
@@ -136,6 +135,11 @@ public class CommandFacade extends LeafFacade {
 		for (var line : Splitter.on('\n').trimResults(CharMatcher.is('\r')).split(commands))
 			builder.append(line).append(getEndOfLine());
 		return builder.toString();
+	}
+
+	public CommandFacade replacePlaceholders(File buildHome) {
+		var image = KubernetesHelper.replacePlaceholders(this.image, buildHome);
+		return new CommandFacade(image, runAs, registryLogins, commands, envMap, useTTY);
 	}
 
 }
