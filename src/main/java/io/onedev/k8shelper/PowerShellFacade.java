@@ -3,6 +3,8 @@ package io.onedev.k8shelper;
 import io.onedev.commons.utils.command.Commandline;
 
 import org.jspecify.annotations.Nullable;
+
+import java.io.File;
 import java.util.List;
 import java.util.Map;
 
@@ -46,4 +48,9 @@ public class PowerShellFacade extends CommandFacade {
 		return "\r\n";
 	}
 	
+	public PowerShellFacade replacePlaceholders(File buildHome) {
+		var image = KubernetesHelper.replacePlaceholders(getImage(), buildHome);
+		return new PowerShellFacade(image, getRunAs(), getRegistryLogins(), powershell, getCommands(), getEnvMap(), isUseTTY());
+	}
+
 }
