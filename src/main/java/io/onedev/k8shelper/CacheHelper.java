@@ -1,19 +1,8 @@
 package io.onedev.k8shelper;
 
-import com.google.common.base.Preconditions;
-import com.google.common.io.ByteStreams;
-import com.google.common.io.CountingOutputStream;
-import io.onedev.commons.utils.ExplicitException;
-import io.onedev.commons.utils.FileUtils;
-import io.onedev.commons.utils.TarUtils;
-import io.onedev.commons.utils.TaskLogger;
-import io.onedev.commons.utils.command.Commandline;
-import io.onedev.commons.utils.match.WildcardUtils;
-import org.apache.commons.io.IOUtils;
-import org.apache.commons.lang3.tuple.ImmutableTriple;
-import org.apache.commons.lang3.tuple.Triple;
+import static io.onedev.commons.utils.StringUtils.parseQuoteTokens;
+import static io.onedev.k8shelper.SetupCacheFacade.UploadStrategy.UPLOAD_IF_NOT_EXACT_MATCH;
 
-import org.jspecify.annotations.Nullable;
 import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
@@ -24,75 +13,91 @@ import java.nio.file.FileVisitor;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.BasicFileAttributes;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.Date;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Set;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Function;
 
-import static io.onedev.commons.utils.StringUtils.parseQuoteTokens;
-import static io.onedev.k8shelper.KubernetesHelper.replacePlaceholders;
-import static io.onedev.k8shelper.SetupCacheFacade.UploadStrategy.UPLOAD_IF_NOT_HIT;
-import static java.util.stream.Collectors.toList;
+import org.apache.commons.io.IOUtils;
+import org.apache.commons.lang3.tuple.ImmutablePair;
+import org.apache.commons.lang3.tuple.ImmutableTriple;
+import org.apache.commons.lang3.tuple.Pair;
+import org.apache.commons.lang3.tuple.Triple;
+import org.jspecify.annotations.Nullable;
+
+import com.google.common.base.Preconditions;
+import com.google.common.io.ByteStreams;
+import com.google.common.io.CountingOutputStream;
+
+import io.onedev.commons.utils.ExplicitException;
+import io.onedev.commons.utils.FileUtils;
+import io.onedev.commons.utils.TarUtils;
+import io.onedev.commons.utils.TaskLogger;
+import io.onedev.commons.utils.command.Commandline;
+import io.onedev.commons.utils.match.WildcardUtils;
 
 public abstract class CacheHelper {
 
     // Do not change this if absolutely necessary
     public static final int MARK_BUFFER_SIZE = 8192;
 
-    private final File buildHome;
+    private final File buildDir;
 
     private final TaskLogger logger;
 
     private final List<Triple<SetupCacheFacade, List<File>, Date>> caches = new ArrayList<>();
 
-    private final Set<String> hitCacheKeys = new HashSet<>();
+    private final Set<Pair<String, String>> exactMatchCacheKeyAndChecksums = new HashSet<>();
 
-    public CacheHelper(File buildHome, TaskLogger logger) {
-        this.buildHome = buildHome;
+    public CacheHelper(File buildDir, TaskLogger logger) {
+        this.buildDir = buildDir;
         this.logger = logger;
     }
 
     public void setupCache(SetupCacheFacade cacheConfig) {
         List<File> cacheDirs = new ArrayList<>();
         for (var cachePath: cacheConfig.getPaths()) {
-            if (cachePath.contains(".."))
-                throw new ExplicitException("Cache path does not allow to contain '..': " + cachePath);
+            if (cachePath.getPathValue().contains(".."))
+                throw new ExplicitException("Cache path does not allow to contain '..': " + cachePath.getPathValue());
 
             File cacheDir;
-            if (new File(cachePath).isAbsolute()) {
+            if (cachePath.isAbsolute()) {
                 int count = 0;
                 for (var cache: caches)
                     count += cache.getMiddle().size();
-                cacheDir = new File(buildHome, "cache/" + (count + cacheDirs.size() + 1));
+                cacheDir = new File(buildDir, "cache/" + (count + cacheDirs.size() + 1));
+            } else if (cachePath.isRelativeToHomeIfNotAbsolute()) {
+                cacheDir = cachePath.resolveAgainst(new File(buildDir, "user"));
             } else {
-                cacheDir = new File(buildHome, "workspace/" + cachePath);
+                cacheDir = cachePath.resolveAgainst(new File(buildDir, "workspace"));
             }
             FileUtils.createDir(cacheDir);
             cacheDirs.add(cacheDir);
         }
 
-        var cacheKey = replacePlaceholders(cacheConfig.getKey(), buildHome);
-        var loadKeys = cacheConfig.getLoadKeys().stream()
-                .map(it -> replacePlaceholders(it, buildHome))
-                .collect(toList());
-        cacheConfig = new SetupCacheFacade(cacheKey, loadKeys, cacheConfig.getPaths(),
-                cacheConfig.getUploadStrategy(), cacheConfig.getChangeDetectionExcludes(),
-                cacheConfig.getUploadProjectPath(), cacheConfig.getUploadAccessToken());
+        cacheConfig.replacePlaceholders(buildDir);
+        cacheConfig.computeChecksum(new File(buildDir, "workspace"), logger);
+
         caches.add(new ImmutableTriple<>(cacheConfig, cacheDirs, new Date()));
 
-        if (downloadCache(cacheKey, cacheConfig.getPaths(), cacheDirs)) {
-            logger.log("Hit " + cacheConfig.getHitDescription());
-            hitCacheKeys.add(cacheKey);
-        } else if (!cacheConfig.getLoadKeys().isEmpty()) {
-            if (downloadCache(cacheConfig.getLoadKeys(), cacheConfig.getPaths(), cacheDirs))
-                logger.log("Matched " + cacheConfig.getMatchedDescription());
+        var cacheAvailability = downloadCache(cacheConfig.getKey(), cacheConfig.getChecksum(), cacheConfig.getPathsAsString(), cacheDirs);
+        if (cacheAvailability == CacheAvailability.EXACT_MATCH) {
+            logger.log(String.format("Exact matched %s", cacheConfig.describe()));
+            exactMatchCacheKeyAndChecksums.add(ImmutablePair.of(cacheConfig.getKey(), cacheConfig.getChecksum()));
+        } else if (cacheAvailability == CacheAvailability.PARTIAL_MATCH) {
+            logger.log(String.format("Partial matched %s", cacheConfig.describe()));
         }
     }
 
     private void uploadCacheThenLog(SetupCacheFacade cacheConfig, List<File> cacheDirs) {
         if (uploadCache(cacheConfig, cacheDirs))
-            logger.log("Uploaded " + cacheConfig.getUploadDescription());
+            logger.log(String.format("Uploaded %s", cacheConfig.describeUpload()));
         else
-            logger.warning("Not authorized to upload " + cacheConfig.getUploadDescription());
+            logger.warning(String.format("Not authorized to upload %s", cacheConfig.describeUpload()));
     }
 
     public void buildFinished(boolean successful) {
@@ -100,8 +105,8 @@ public abstract class CacheHelper {
             for (var cache : caches) {
                 var cacheConfig = cache.getLeft();
                 var cacheDirs = cache.getMiddle();
-                if (cacheConfig.getUploadStrategy() == UPLOAD_IF_NOT_HIT) {
-                    if (!hitCacheKeys.contains(cacheConfig.getKey()))
+                if (cacheConfig.getUploadStrategy() == UPLOAD_IF_NOT_EXACT_MATCH) {
+                    if (!exactMatchCacheKeyAndChecksums.contains(ImmutablePair.of(cacheConfig.getKey(), cacheConfig.getChecksum())))
                         uploadCacheThenLog(cacheConfig, cacheDirs);
                 } else {
                     var changedFile = getChangedFile(cacheDirs, cache.getRight(), cacheConfig);
@@ -120,9 +125,9 @@ public abstract class CacheHelper {
             var cacheDirs = cache.getMiddle();
             for (int i=0; i<cacheConfig.getPaths().size(); i++) {
                 var cachePath = cacheConfig.getPaths().get(i);
-                if (new File(cachePath).isAbsolute()) {
+                if (cachePath.isAbsolute()) {
                     var mountFrom = sourceTransformer.apply(cacheDirs.get(i).getAbsolutePath());
-                    docker.addArgs("-v", mountFrom + ":" + cachePath);
+                    docker.addArgs("-v", mountFrom + ":" + cachePath.getPathValue());
                 }
             }
         }
@@ -227,9 +232,8 @@ public abstract class CacheHelper {
         }
     }
 
-    protected abstract boolean downloadCache(String cacheKey, List<String> cachePaths, List<File> cacheDirs);
-
-    protected abstract boolean downloadCache(List<String> loadKeys, List<String> cachePaths, List<File> cacheDirs);
+    protected abstract CacheAvailability downloadCache(String key, @Nullable String checksum, 
+            String cachePathsString, List<File> cacheDirs);
 
     protected abstract boolean uploadCache(SetupCacheFacade cacheConfig, List<File> cacheDirs);
 

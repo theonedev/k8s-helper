@@ -22,7 +22,7 @@ public class PowerShellFacade extends CommandFacade {
 
 	@Override
 	protected String getPauseInvokeCommand() {
-		return "cmd /c $env:ONEDEV_WORKSPACE%\\..\\pause.bat";
+		return "cmd /c $env:ONEDEV_WORKDIR%\\..\\pause.bat";
 	}
 
 	@Override
@@ -48,8 +48,8 @@ public class PowerShellFacade extends CommandFacade {
 		return "\r\n";
 	}
 	
-	public PowerShellFacade replacePlaceholders(File buildHome) {
-		var image = KubernetesHelper.replacePlaceholders(getImage(), buildHome);
+	public PowerShellFacade replacePlaceholders(File buildDir) {
+		var image = KubernetesHelper.replacePlaceholders(getImage(), buildDir);
 		return new PowerShellFacade(image, getRunAs(), getRegistryLogins(), powershell, getCommands(), getEnvMap(), isUseTTY());
 	}
 

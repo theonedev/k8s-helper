@@ -65,35 +65,35 @@ public class CommandFacade extends LeafFacade {
 		return useTTY;
 	}
 	
-	public void generatePauseCommand(File buildHome) {
+	public void generatePauseCommand(File buildDir) {
 		if (SystemUtils.IS_OS_WINDOWS) {
-			FileUtils.writeFile(new File(buildHome, "pause.bat"), ""
+			FileUtils.writeFile(new File(buildDir, "pause.bat"), ""
 					+ "@echo off\r\n"
-					+ "if exist \"%ONEDEV_WORKSPACE%\\..\\continue\" (\r\n"
-					+ "  del \"%ONEDEV_WORKSPACE%\\..\\continue\"\r\n"
+					+ "if exist \"%ONEDEV_WORKDIR%\\..\\continue\" (\r\n"
+					+ "  del \"%ONEDEV_WORKDIR%\\..\\continue\"\r\n"
 					+ ")\r\n"
 					+ "echo ##onedev[PauseExecution]\r\n"
 					+ ":repeat\r\n"
-					+ "if exist \"%ONEDEV_WORKSPACE%\\..\\continue\" (\r\n"
+					+ "if exist \"%ONEDEV_WORKDIR%\\..\\continue\" (\r\n"
 					+ "  exit /b\r\n"
 					+ ") else (\r\n"
 					+ "  ping -n 2 127.0.0.1 > nul\r\n"
 					+ "  goto :repeat\r\n"
 					+ ")\r\n");
 		} else { 
-			FileUtils.writeFile(new File(buildHome, "pause.sh"), ""
-					+ "rm -f $ONEDEV_WORKSPACE/../continue\n"
+			FileUtils.writeFile(new File(buildDir, "pause.sh"), ""
+					+ "rm -f $ONEDEV_WORKDIR/../continue\n"
 					+ "echo '##onedev[PauseExecution]'\n"
-					+ "while [ ! -f $ONEDEV_WORKSPACE/../continue ]; do sleep 1; done\n");
+					+ "while [ ! -f $ONEDEV_WORKDIR/../continue ]; do sleep 1; done\n");
 		}
-		FileUtils.writeFile(new File(buildHome, "pause"), getPauseInvokeCommand());
+		FileUtils.writeFile(new File(buildDir, "pause"), getPauseInvokeCommand());
 	}
 	
 	protected String getPauseInvokeCommand() {
 		if (SystemUtils.IS_OS_WINDOWS) 
-			return "cmd /c %ONEDEV_WORKSPACE%\\..\\pause.bat";
+			return "cmd /c %ONEDEV_WORKDIR%\\..\\pause.bat";
 		else 
-			return "sh $ONEDEV_WORKSPACE/../pause.sh";
+			return "sh $ONEDEV_WORKDIR/../pause.sh";
 	}
 	
 	public Commandline getScriptInterpreter() {
@@ -137,8 +137,8 @@ public class CommandFacade extends LeafFacade {
 		return builder.toString();
 	}
 
-	public CommandFacade replacePlaceholders(File buildHome) {
-		var image = KubernetesHelper.replacePlaceholders(this.image, buildHome);
+	public CommandFacade replacePlaceholders(File buildDir) {
+		var image = KubernetesHelper.replacePlaceholders(this.image, buildDir);
 		return new CommandFacade(image, runAs, registryLogins, commands, envMap, useTTY);
 	}
 

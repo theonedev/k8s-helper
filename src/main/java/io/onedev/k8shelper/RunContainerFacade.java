@@ -76,22 +76,22 @@ public class RunContainerFacade extends LeafFacade {
 		return useTTY;
 	}
 
-	public RunContainerFacade replacePlaceholders(File buildHome) {
-		var image = KubernetesHelper.replacePlaceholders(this.image, buildHome);
+	public RunContainerFacade replacePlaceholders(File buildDir) {
+		var image = KubernetesHelper.replacePlaceholders(this.image, buildDir);
 		var runAs = this.runAs;
 		if (runAs != null)
-			runAs = KubernetesHelper.replacePlaceholders(runAs, buildHome);
+			runAs = KubernetesHelper.replacePlaceholders(runAs, buildDir);
 		var args = this.args;
 		if (args != null)
-			args = KubernetesHelper.replacePlaceholders(args, buildHome);
+			args = KubernetesHelper.replacePlaceholders(args, buildDir);
 		var workingDir = this.workingDir;
 		if (workingDir != null)
-			workingDir = KubernetesHelper.replacePlaceholders(workingDir, buildHome);
+			workingDir = KubernetesHelper.replacePlaceholders(workingDir, buildDir);
 		var volumeMounts = new HashMap<String, String>();
 		for (var entry: this.volumeMounts.entrySet()) {
 			volumeMounts.put(
-				KubernetesHelper.replacePlaceholders(entry.getKey(), buildHome), 
-				KubernetesHelper.replacePlaceholders(entry.getValue(), buildHome));
+				KubernetesHelper.replacePlaceholders(entry.getKey(), buildDir), 
+				KubernetesHelper.replacePlaceholders(entry.getValue(), buildDir));
 		}
 		return new RunContainerFacade(image, runAs, args, envMap, workingDir, volumeMounts, registryLogins, useTTY);
 	}

@@ -43,8 +43,8 @@ public class ShellFacade extends CommandFacade {
 		return "\n";
 	}
 	
-	public ShellFacade replacePlaceholders(File buildHome) {
-		var image = KubernetesHelper.replacePlaceholders(getImage(), buildHome);
+	public ShellFacade replacePlaceholders(File buildDir) {
+		var image = KubernetesHelper.replacePlaceholders(getImage(), buildDir);
 		return new ShellFacade(image, getRunAs(), getRegistryLogins(), shell, getCommands(), getEnvMap(), isUseTTY());
 	}
 

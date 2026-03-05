@@ -57,13 +57,13 @@ public class ServerSideFacade extends LeafFacade {
 		return placeholders;
 	}
 
-	public boolean execute(File buildHome, Runner runner) {
+	public boolean execute(File buildDir, Runner runner) {
 		File filesDir = FileUtils.createTempDir();
 		try {
 			Collection<String> placeholders = getPlaceholders();
-			Map<String, String> placeholderValues = readPlaceholderValues(buildHome, placeholders);
+			Map<String, String> placeholderValues = readPlaceholderValues(buildDir, placeholders);
 			
-			File sourceDir = new File(buildHome, "workspace");
+			File sourceDir = new File(buildDir, "workspace");
 			if (getSourcePath() != null) {
 				String sourcePath = replacePlaceholders(getSourcePath(), placeholderValues);
 				if (sourcePath.contains(".."))
@@ -92,7 +92,7 @@ public class ServerSideFacade extends LeafFacade {
 			
 			for (Map.Entry<String, byte[]> entry: result.getOutputFiles().entrySet()) {
 				FileUtils.writeByteArrayToFile(
-						new File(buildHome, entry.getKey()),
+						new File(buildDir, entry.getKey()),
 						entry.getValue());
 			}
 			return result.isSuccessful();
