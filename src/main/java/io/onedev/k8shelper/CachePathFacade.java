@@ -11,35 +11,35 @@ public class CachePathFacade implements Serializable {
 
 	private final boolean relativeToHomeIfNotAbsolute;
 
-	private final String pathValue;
+	private final String path;
 
-	public CachePathFacade(boolean relativeToHomeIfNotAbsolute, String pathValue) {
+	public CachePathFacade(boolean relativeToHomeIfNotAbsolute, String path) {
 		this.relativeToHomeIfNotAbsolute = relativeToHomeIfNotAbsolute;
-		this.pathValue = pathValue;
+		this.path = path;
 	}
 
 	public boolean isRelativeToHomeIfNotAbsolute() {
 		return relativeToHomeIfNotAbsolute;
 	}
 
-	public String getPathValue() {
-		return pathValue;
+	public String getPath() {
+		return path;
 	}
 
 	public boolean isAbsolute() {
-		return FilenameUtils.getPrefixLength(pathValue) > 0;
+		return FilenameUtils.getPrefixLength(path) > 0;
 	}
 
 	public File resolveAgainst(File baseDir) {
 		if (isAbsolute())
-			return new File(pathValue);
+			return new File(path);
 		else
-			return baseDir.toPath().resolve(getPathValue()).toFile();
+			return baseDir.toPath().resolve(getPath()).toFile();
 	}
 
 	@Override
 	public String toString() {
-		return relativeToHomeIfNotAbsolute + ":" + pathValue;
+		return relativeToHomeIfNotAbsolute + ":" + path;
 	}
 
 }

@@ -113,7 +113,7 @@ public class BuildImageFacade extends LeafFacade {
 		public void execute(Commandline docker, File hostBuildDir, LineConsumer infoLogger, LineConsumer errorLogger) {
 			if (!PathUtils.isSubPath(destPath))
 				throw new ExplicitException("OCI output path should be a relative path not containing '..'");
-			var destDir = new File(new File(hostBuildDir, "workspace"), replacePlaceholders(destPath, hostBuildDir));
+			var destDir = new File(new File(hostBuildDir, "work"), replacePlaceholders(destPath, hostBuildDir));
 			FileUtils.createDir(destDir);
 			docker.addArgs("-o type=oci,dest=-");
 			docker.execute(is -> Bootstrap.executorService.submit(() -> {

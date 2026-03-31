@@ -1,56 +1,24 @@
 package io.onedev.k8shelper;
 
-import io.onedev.commons.utils.command.Commandline;
-
-import org.jspecify.annotations.Nullable;
-
-import java.io.File;
-import java.util.List;
-import java.util.Map;
-
-public class PowerShellFacade extends CommandFacade {
+public class PowerShellFacade extends InterpreterFacade {
 
 	private static final long serialVersionUID = 1L;
 
 	private final String powershell;
 
-	public PowerShellFacade(@Nullable String image, @Nullable String runAs, List<RegistryLoginFacade> registryLogins,
-							String powershell, String commands, Map<String, String> envMap, boolean useTTY) {
-		super(image, runAs, registryLogins, commands, envMap, useTTY);
+	public PowerShellFacade(String commands, String powershell) {
+		super(commands);
 		this.powershell = powershell;
+	}
+
+	@Override
+	public ShellAccessor getShellAccessor() {
+		return new PowerShellAccessor(powershell);
 	}
 
 	@Override
 	protected String getPauseInvokeCommand() {
 		return "cmd /c $env:ONEDEV_WORKDIR%\\..\\pause.bat";
-	}
-
-	@Override
-	public Commandline getScriptInterpreter() {
-		return new Commandline(powershell).addArgs("-executionpolicy", "remotesigned", "-file");
-	}
-
-	@Override
-	public String[] getShell(boolean isLinux, String workingDir) {
-		if (workingDir != null)
-			return new String[]{"cmd", "/c", String.format("cd %s && %s", workingDir, powershell)};
-		else
-			return new String[]{powershell};
-	}
-
-	@Override
-	public String getScriptExtension() {
-		return ".ps1";
-	}
-	
-	@Override
-	public String getEndOfLine() {
-		return "\r\n";
-	}
-	
-	public PowerShellFacade replacePlaceholders(File buildDir) {
-		var image = KubernetesHelper.replacePlaceholders(getImage(), buildDir);
-		return new PowerShellFacade(image, getRunAs(), getRegistryLogins(), powershell, getCommands(), getEnvMap(), isUseTTY());
 	}
 
 }

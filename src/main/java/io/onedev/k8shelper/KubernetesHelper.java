@@ -1,9 +1,9 @@
 package io.onedev.k8shelper;
 
 import static io.onedev.commons.utils.TarUtils.untar;
-import static io.onedev.k8shelper.CacheHelper.tar;
-import static io.onedev.k8shelper.CacheHelper.untar;
-import static io.onedev.k8shelper.SetupCacheFacade.UploadStrategy.UPLOAD_IF_NOT_EXACT_MATCH;
+import static io.onedev.k8shelper.CacheProvisioner.tar;
+import static io.onedev.k8shelper.CacheProvisioner.untar;
+import static io.onedev.k8shelper.UploadStrategy.UPLOAD_IF_NOT_EXACT_MATCH;
 import static java.nio.charset.StandardCharsets.UTF_8;
 import static java.util.Base64.getEncoder;
 import static java.util.stream.Collectors.toList;
@@ -91,7 +91,7 @@ public class KubernetesHelper {
 	
 	public static final String PAUSE = "pause";
 	
-	public static final String WORKDIR = "workspace";
+	public static final String WORKDIR = "work";
 	
 	public static final String ATTRIBUTES = "attributes";
 
@@ -177,7 +177,7 @@ public class KubernetesHelper {
 					"cd " + (workingDir!=null? "'" + workingDir.getAbsolutePath() + "'": "$initialWorkingDir")
 							+ " && test -w $HOME && cp -r -f -p /onedev-build/user/. $HOME || export HOME=/onedev-build/user"
 							+ " && echo '" + TaskLogger.wrapWithAnsiNotice("Running step \"" + escapedStepPath + "\"...") + "'"
-							+ " && " + commandFacade.getScriptInterpreter() + " " + stepScriptFile.getAbsolutePath(),
+							+ " && " + commandFacade.buildScriptCmdline() + " " + stepScriptFile.getAbsolutePath(),
 					"exitCode=\"$?\"",
 					"if [ $exitCode -eq 0 ]",
 					"then",
@@ -268,7 +268,7 @@ public class KubernetesHelper {
 				FileUtils.createDir(getWorkDir());
 				var commandsBuilder = new StringBuilder("echo hello from container\n");
 				generateCommandScript(Lists.newArrayList(0), "test",
-						new CommandFacade("any", null, null, commandsBuilder.toString(), new HashMap<>(), true), getWorkDir());
+						new CommandFacade("any", null, null, new HashMap<>(), true, commandsBuilder.toString()), getWorkDir());
 			} else {
 				K8sJobData jobData;
 				Client client = buildRestClient(sslFactory);
@@ -293,8 +293,8 @@ public class KubernetesHelper {
 					client.close();
 				}
 				
-				File workspace = getWorkDir();
-				FileUtils.createDir(workspace);
+				File workDir = getWorkDir();
+				FileUtils.createDir(workDir);
 				
 				logger.info("Generating command scripts...");
 				
@@ -331,7 +331,7 @@ public class KubernetesHelper {
 						var commandsBuilder = new StringBuilder();
 						commandsBuilder.append(command).append("\n");
 
-						commandFacade = new CommandFacade("any", null, null, commandsBuilder.toString(), new HashMap<>(), true);
+						commandFacade = new CommandFacade("any", null, null, new HashMap<>(), true, commandsBuilder.toString());
 					}
 
 					generateCommandScript(position, stepPath, commandFacade, workingDir);
@@ -341,8 +341,8 @@ public class KubernetesHelper {
 				
 				logger.info("Downloading job dependencies from {}...", serverUrl);
 				
-				downloadDependencies(serverUrl, jobToken, workspace, sslFactory);
-				logger.info("Job workspace initialized");
+				downloadDependencies(serverUrl, jobToken, workDir, sslFactory);
+				logger.info("Job workdir initialized");
 			}
 		} catch (IOException e) {
 			throw new RuntimeException(e);
@@ -687,7 +687,7 @@ public class KubernetesHelper {
 		
 		if (test) {
 			CommandFacade facade = new CommandFacade(
-					"this does not matter", null, null, "this does not matter", new HashMap<>(), false);
+					"this does not matter", null, null, new HashMap<>(), false, "this does not matter");
 			return facade.execute(commandHandler, Lists.newArrayList(0));
 		} else {
 			var jobData = readJobData();
@@ -708,7 +708,7 @@ public class KubernetesHelper {
 						if (!cacheInfo.getRight())
 							uploadCacheThenLog(serverUrl, jobToken, cacheConfig, cacheDirs, sslFactory);
 					} else {
-						var changedFile = CacheHelper.getChangedFile(cacheDirs, cacheInfo.getMiddle(), cacheConfig);
+						var changedFile = CacheProvisioner.getChangedFile(cacheDirs, cacheInfo.getMiddle(), cacheConfig);
 						if (changedFile != null) {
 							logger.info("Cache file changed: " + changedFile);
 							uploadCacheThenLog(serverUrl, jobToken, cacheConfig, cacheDirs, sslFactory);
@@ -720,7 +720,7 @@ public class KubernetesHelper {
 		}
 	}
 
-	private static void uploadCacheThenLog(String serverUrl, String jobToken, SetupCacheFacade cacheConfig,
+	private static void uploadCacheThenLog(String serverUrl, String jobToken, CacheConfigFacade cacheConfig,
 							 List<File> cacheDirs, @Nullable SSLFactory sslFactory) {
 		if (uploadCache(serverUrl, jobToken, cacheConfig, cacheDirs, sslFactory))
 			logger.info("Uploaded " + cacheConfig.describeUpload());
@@ -784,15 +784,15 @@ public class KubernetesHelper {
 		
 		File userHomeDir = new File(System.getProperty("user.home"));
 
-		File workspace = getWorkDir();
+		File workDir = getWorkDir();
 		Commandline git = new Commandline("git");
 		if (checkoutPath != null) {
 			if (checkoutPath.contains(".."))
 				throw new ExplicitException("Checkout path should not contain '..'");
-			git.workingDir(new File(workspace, checkoutPath));
+			git.workingDir(new File(workDir, checkoutPath));
 			FileUtils.createDir(git.workingDir());
 		} else {
-			git.workingDir(workspace);
+			git.workingDir(workDir);
 		}
 
 		File trustCertsFile = new File(getBuildDir(), "trust-certs.pem");
@@ -840,7 +840,7 @@ public class KubernetesHelper {
 										List<Integer> position, ServerSideFacade serverSideFacade,
 										File buildDir, TaskLogger logger) {
 		Map<String, String> placeholderValues = readPlaceholderValues(buildDir, serverSideFacade.getPlaceholders());
-		File baseDir = new File(buildDir, "workspace");
+		File baseDir = new File(buildDir, "work");
 		if (serverSideFacade.getSourcePath() != null)
 			baseDir = new File(baseDir, replacePlaceholders(serverSideFacade.getSourcePath(), placeholderValues));
 		
@@ -909,7 +909,7 @@ public class KubernetesHelper {
 		return new File(getMarkDir(), "cache-infos");
 	}
 
-	private static void writeCacheInfos(List<Triple<SetupCacheFacade, Date, Boolean>> cacheInfos) {
+	private static void writeCacheInfos(List<Triple<CacheConfigFacade, Date, Boolean>> cacheInfos) {
 		try {
 			writeByteArrayToFile(getCacheInfosFile(), serialize((Serializable) cacheInfos));
 		} catch (IOException e) {
@@ -917,7 +917,7 @@ public class KubernetesHelper {
 		}
 	}
 
-	private static List<Triple<SetupCacheFacade, Date, Boolean>> readCacheInfos() {
+	private static List<Triple<CacheConfigFacade, Date, Boolean>> readCacheInfos() {
 		var file = getCacheInfosFile();
 		if (file.exists()) {
 			try {
@@ -932,7 +932,7 @@ public class KubernetesHelper {
 
 	private static File getCacheDir(CachePathFacade cachePath) {
 		if (cachePath.isAbsolute())
-			return new File(cachePath.getPathValue());
+			return new File(cachePath.getPath());
 		else if (cachePath.isRelativeToHomeIfNotAbsolute())
 			return cachePath.resolveAgainst(getUserDir());
 		else 
@@ -943,9 +943,9 @@ public class KubernetesHelper {
 		var position = parseStepPosition(positionStr);
 		var jobData = readJobData();
 		var actions = jobData.getActions();
-		var cacheConfig = (SetupCacheFacade) new CompositeFacade(actions).getFacade(position);
+		var cacheConfig = ((SetupCacheFacade) new CompositeFacade(actions).getFacade(position)).getCacheConfig();
 
-		cacheConfig.replacePlaceholders(getBuildDir());
+        cacheConfig.replacePlaceholders(getBuildDir());
 		cacheConfig.computeChecksum(getWorkDir(), new TaskLogger() {
 
 			@Override
@@ -959,7 +959,7 @@ public class KubernetesHelper {
 
 		for (var cachePath: cachePaths) {
 			if (cachePath.isRelativeToHomeIfNotAbsolute() && !cachePath.isAbsolute())
-				throw new ExplicitException("Kubernetes executor does not allow home relative cache path (" + cachePath.getPathValue() + "). Use absolute path instead");
+				throw new ExplicitException("Kubernetes executor does not allow home relative cache path (" + cachePath.getPath() + "). Use absolute path instead");
 		}		
 
 		var sslFactory = buildSSLFactory(getTrustCertsDir());
@@ -1040,7 +1040,7 @@ public class KubernetesHelper {
         		matcher.appendReplacement(buffer, Matcher.quoteReplacement(placeholderValue));
         	} else if (placeholder.startsWith(WORKDIR + "/")) {
         		throw new ExplicitException("Error replacing placeholder: unable to find file '" 
-        				+ placeholder.substring(WORKDIR.length()+1) + "' in workspace");
+        				+ placeholder.substring(WORKDIR.length()+1) + "' in workdir");
         	} else if (placeholder.startsWith(ATTRIBUTES + "/")) {
         		throw new ExplicitException("Error replacing placeholder: agent attribute '" 
         				+ placeholder.substring(ATTRIBUTES.length()+1) + "' does not exist");
@@ -1128,7 +1128,7 @@ public class KubernetesHelper {
 		}
 	}
 
-	public static boolean uploadCache(String serverUrl, String jobToken, SetupCacheFacade cacheConfig,
+	public static boolean uploadCache(String serverUrl, String jobToken, CacheConfigFacade cacheConfig,
 									  List<File> cacheDirs, @Nullable SSLFactory sslFactory) {
 		var key = cacheConfig.getKey();
 		var checksum = cacheConfig.getChecksum();

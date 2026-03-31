@@ -1,7 +1,7 @@
 package io.onedev.k8shelper;
 
 import static io.onedev.commons.utils.StringUtils.parseQuoteTokens;
-import static io.onedev.k8shelper.SetupCacheFacade.UploadStrategy.UPLOAD_IF_NOT_EXACT_MATCH;
+import static io.onedev.k8shelper.UploadStrategy.UPLOAD_IF_NOT_EXACT_MATCH;
 
 import java.io.File;
 import java.io.IOException;
@@ -24,9 +24,7 @@ import java.util.function.Function;
 
 import org.apache.commons.io.IOUtils;
 import org.apache.commons.lang3.tuple.ImmutablePair;
-import org.apache.commons.lang3.tuple.ImmutableTriple;
 import org.apache.commons.lang3.tuple.Pair;
-import org.apache.commons.lang3.tuple.Triple;
 import org.jspecify.annotations.Nullable;
 
 import com.google.common.base.Preconditions;
@@ -40,94 +38,92 @@ import io.onedev.commons.utils.TaskLogger;
 import io.onedev.commons.utils.command.Commandline;
 import io.onedev.commons.utils.match.WildcardUtils;
 
-public abstract class CacheHelper {
+public abstract class CacheProvisioner {
 
     // Do not change this if absolutely necessary
     public static final int MARK_BUFFER_SIZE = 8192;
 
-    private final File buildDir;
+    private final File baseDir;
 
     private final TaskLogger logger;
 
-    private final List<Triple<SetupCacheFacade, List<File>, Date>> caches = new ArrayList<>();
+    private final List<CacheAllocation> allocations = new ArrayList<>();
 
     private final Set<Pair<String, String>> exactMatchCacheKeyAndChecksums = new HashSet<>();
 
-    public CacheHelper(File buildDir, TaskLogger logger) {
-        this.buildDir = buildDir;
+    public CacheProvisioner(File baseDir, TaskLogger logger) {
+        this.baseDir = baseDir;
         this.logger = logger;
     }
 
-    public void setupCache(SetupCacheFacade cacheConfig) {
+    public void setupCache(CacheConfigFacade cacheConfig) {
         List<File> cacheDirs = new ArrayList<>();
         for (var cachePath: cacheConfig.getPaths()) {
-            if (cachePath.getPathValue().contains(".."))
-                throw new ExplicitException("Cache path does not allow to contain '..': " + cachePath.getPathValue());
+            if (cachePath.getPath().contains(".."))
+                throw new ExplicitException("Cache path does not allow to contain '..': " + cachePath.getPath());
 
             File cacheDir;
             if (cachePath.isAbsolute()) {
                 int count = 0;
-                for (var cache: caches)
-                    count += cache.getMiddle().size();
-                cacheDir = new File(buildDir, "cache/" + (count + cacheDirs.size() + 1));
+                for (var cache: allocations)
+                    count += cache.getDirs().size();
+                cacheDir = new File(baseDir, "cache/" + (count + cacheDirs.size() + 1));
             } else if (cachePath.isRelativeToHomeIfNotAbsolute()) {
-                cacheDir = cachePath.resolveAgainst(new File(buildDir, "user"));
+                cacheDir = cachePath.resolveAgainst(new File(baseDir, "user"));
             } else {
-                cacheDir = cachePath.resolveAgainst(new File(buildDir, "workspace"));
+                cacheDir = cachePath.resolveAgainst(new File(baseDir, "work"));
             }
             FileUtils.createDir(cacheDir);
             cacheDirs.add(cacheDir);
         }
 
-        cacheConfig.replacePlaceholders(buildDir);
-        cacheConfig.computeChecksum(new File(buildDir, "workspace"), logger);
+        cacheConfig.replacePlaceholders(baseDir);
+        cacheConfig.computeChecksum(new File(baseDir, "work"), logger);
 
-        caches.add(new ImmutableTriple<>(cacheConfig, cacheDirs, new Date()));
+        allocations.add(new CacheAllocation(cacheConfig, cacheDirs, new Date()));
 
         var cacheAvailability = downloadCache(cacheConfig.getKey(), cacheConfig.getChecksum(), cacheConfig.getPathsAsString(), cacheDirs);
         if (cacheAvailability == CacheAvailability.EXACT_MATCH) {
             logger.log(String.format("Exact matched %s", cacheConfig.describe()));
             exactMatchCacheKeyAndChecksums.add(ImmutablePair.of(cacheConfig.getKey(), cacheConfig.getChecksum()));
         } else if (cacheAvailability == CacheAvailability.PARTIAL_MATCH) {
-            logger.log(String.format("Partial matched %s", cacheConfig.describe()));
+            logger.log(String.format("Partial matched %s", cacheConfig.describe()));    
         }
     }
 
-    private void uploadCacheThenLog(SetupCacheFacade cacheConfig, List<File> cacheDirs) {
+    private void uploadCacheThenLog(CacheConfigFacade cacheConfig, List<File> cacheDirs) {
         if (uploadCache(cacheConfig, cacheDirs))
             logger.log(String.format("Uploaded %s", cacheConfig.describeUpload()));
         else
             logger.warning(String.format("Not authorized to upload %s", cacheConfig.describeUpload()));
     }
 
-    public void buildFinished(boolean successful) {
-        if (successful) {
-            for (var cache : caches) {
-                var cacheConfig = cache.getLeft();
-                var cacheDirs = cache.getMiddle();
-                if (cacheConfig.getUploadStrategy() == UPLOAD_IF_NOT_EXACT_MATCH) {
-                    if (!exactMatchCacheKeyAndChecksums.contains(ImmutablePair.of(cacheConfig.getKey(), cacheConfig.getChecksum())))
-                        uploadCacheThenLog(cacheConfig, cacheDirs);
-                } else {
-                    var changedFile = getChangedFile(cacheDirs, cache.getRight(), cacheConfig);
-                    if (changedFile != null) {
-                        logger.log("Cache file changed: " + changedFile);
-                        uploadCacheThenLog(cacheConfig, cacheDirs);
-                    }
+    public void uploadCaches() {
+        for (var cache : allocations) {
+            var cacheConfig = cache.getDefinition();
+            var cacheDirs = cache.getDirs();
+            if (cacheConfig.getUploadStrategy() == UPLOAD_IF_NOT_EXACT_MATCH) {
+                if (!exactMatchCacheKeyAndChecksums.contains(ImmutablePair.of(cacheConfig.getKey(), cacheConfig.getChecksum())))
+                    uploadCacheThenLog(cacheConfig, cacheDirs);
+            } else {
+                var changedFile = getChangedFile(cacheDirs, cache.getSetupDate(), cacheConfig);
+                if (changedFile != null) {
+                    logger.log("Cache file changed: " + changedFile);
+                    uploadCacheThenLog(cacheConfig, cacheDirs);
                 }
             }
         }
     }
 
     public void mountVolumes(Commandline docker, Function<String, String> sourceTransformer) {
-        for (var cache: caches) {
-            var cacheConfig = cache.getLeft();
-            var cacheDirs = cache.getMiddle();
+        for (var cache: allocations) {
+            var cacheConfig = cache.getDefinition();
+            var cacheDirs = cache.getDirs();
             for (int i=0; i<cacheConfig.getPaths().size(); i++) {
                 var cachePath = cacheConfig.getPaths().get(i);
                 if (cachePath.isAbsolute()) {
                     var mountFrom = sourceTransformer.apply(cacheDirs.get(i).getAbsolutePath());
-                    docker.addArgs("-v", mountFrom + ":" + cachePath.getPathValue());
+                    docker.addArgs("-v", mountFrom + ":" + cachePath.getPath());
                 }
             }
         }
@@ -157,7 +153,7 @@ public abstract class CacheHelper {
     }
 
     @Nullable
-    public static String getChangedFile(List<File> cacheDirs, Date sinceDate, SetupCacheFacade cacheConfig) {
+    public static String getChangedFile(List<File> cacheDirs, Date sinceDate, CacheConfigFacade cacheConfig) {
         var excludeFiles = new ArrayList<String>();
         if (cacheConfig.getChangeDetectionExcludes() != null)
             Collections.addAll(excludeFiles, parseQuoteTokens(cacheConfig.getChangeDetectionExcludes()));
@@ -235,6 +231,6 @@ public abstract class CacheHelper {
     protected abstract CacheAvailability downloadCache(String key, @Nullable String checksum, 
             String cachePathsString, List<File> cacheDirs);
 
-    protected abstract boolean uploadCache(SetupCacheFacade cacheConfig, List<File> cacheDirs);
+    protected abstract boolean uploadCache(CacheConfigFacade cacheConfig, List<File> cacheDirs);
 
 }

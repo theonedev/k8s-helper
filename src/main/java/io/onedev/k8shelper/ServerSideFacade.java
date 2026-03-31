@@ -63,7 +63,7 @@ public class ServerSideFacade extends LeafFacade {
 			Collection<String> placeholders = getPlaceholders();
 			Map<String, String> placeholderValues = readPlaceholderValues(buildDir, placeholders);
 			
-			File sourceDir = new File(buildDir, "workspace");
+			File sourceDir = new File(buildDir, "work");
 			if (getSourcePath() != null) {
 				String sourcePath = replacePlaceholders(getSourcePath(), placeholderValues);
 				if (sourcePath.contains(".."))

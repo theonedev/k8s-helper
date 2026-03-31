@@ -53,20 +53,20 @@ public class CheckoutFacade extends LeafFacade {
 		return checkoutPath;
 	}
 
-	public void setupWorkingDir(Commandline git, File workspace) {
+	public void setupWorkingDir(Commandline git, File workDir) {
 		if (getCheckoutPath() != null) {
 			if (getCheckoutPath().contains(".."))
 				throw new ExplicitException("Checkout path should not contain '..'");
-			git.workingDir(new File(workspace, getCheckoutPath()));
+			git.workingDir(new File(workDir, getCheckoutPath()));
 			FileUtils.createDir(git.workingDir());
 		} else {
-			git.workingDir(workspace);
+			git.workingDir(workDir);
 		}
 	}
 
-	public void setupSafeDirectory(Commandline git, String containerWorkspace,
+	public void setupSafeDirectory(Commandline git, String containerWorkDirPath,
 								   LineConsumer infoLogger, LineConsumer errorLogger) {
-		String containerCheckoutPath = containerWorkspace;
+		String containerCheckoutPath = containerWorkDirPath;
 		if (SystemUtils.IS_OS_WINDOWS)
 			containerCheckoutPath = containerCheckoutPath.replace('\\', '/');
 		if (getCheckoutPath() != null)

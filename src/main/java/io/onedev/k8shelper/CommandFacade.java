@@ -7,9 +7,6 @@ import java.util.Map;
 import org.apache.commons.lang3.SystemUtils;
 import org.jspecify.annotations.Nullable;
 
-import com.google.common.base.CharMatcher;
-import com.google.common.base.Splitter;
-
 import io.onedev.commons.utils.FileUtils;
 import io.onedev.commons.utils.command.Commandline;
 
@@ -21,22 +18,27 @@ public class CommandFacade extends LeafFacade {
 
 	private final String runAs;
 
-	private final String commands;
-
 	private final Map<String, String> envMap;
 
 	private final List<RegistryLoginFacade> registryLogins;
 
 	private final boolean useTTY;
 
+	private final InterpreterFacade interpreter;
+
 	public CommandFacade(@Nullable String image, @Nullable String runAs, List<RegistryLoginFacade> registryLogins,
-						 String commands, Map<String, String> envMap, boolean useTTY) {
+						 Map<String, String> envMap, boolean useTTY, InterpreterFacade interpreter) {
 		this.image = image;
 		this.runAs = runAs;
 		this.registryLogins = registryLogins;
-		this.commands = commands;
 		this.envMap = envMap;
 		this.useTTY = useTTY;
+		this.interpreter = interpreter;
+	}
+
+	public CommandFacade(@Nullable String image, @Nullable String runAs, List<RegistryLoginFacade> registryLogins,
+		Map<String, String> envMap, boolean useTTY, String commands) {
+		this(image, runAs, registryLogins, envMap, useTTY, new DefaultInterpreterFacade(commands));
 	}
 
 	@Nullable
@@ -50,7 +52,7 @@ public class CommandFacade extends LeafFacade {
 	}
 
 	public String getCommands() {
-		return commands;
+		return interpreter.getCommands();
 	}
 
 	public Map<String, String> getEnvMap() {
@@ -64,7 +66,11 @@ public class CommandFacade extends LeafFacade {
 	public boolean isUseTTY() {
 		return useTTY;
 	}
-	
+
+	public InterpreterFacade getInterpreter() {
+		return interpreter;
+	}
+
 	public void generatePauseCommand(File buildDir) {
 		if (SystemUtils.IS_OS_WINDOWS) {
 			FileUtils.writeFile(new File(buildDir, "pause.bat"), ""
@@ -86,60 +92,32 @@ public class CommandFacade extends LeafFacade {
 					+ "echo '##onedev[PauseExecution]'\n"
 					+ "while [ ! -f $ONEDEV_WORKDIR/../continue ]; do sleep 1; done\n");
 		}
-		FileUtils.writeFile(new File(buildDir, "pause"), getPauseInvokeCommand());
+		FileUtils.writeFile(new File(buildDir, "pause"), interpreter.getPauseInvokeCommand());
 	}
 	
-	protected String getPauseInvokeCommand() {
-		if (SystemUtils.IS_OS_WINDOWS) 
-			return "cmd /c %ONEDEV_WORKDIR%\\..\\pause.bat";
-		else 
-			return "sh $ONEDEV_WORKDIR/../pause.sh";
+	public Commandline buildScriptCmdline() {
+		return interpreter.getShellAccessor().buildScriptCmdline();
 	}
 	
-	public Commandline getScriptInterpreter() {
-		if (SystemUtils.IS_OS_WINDOWS) 
-			return new Commandline("cmd").addArgs("/c");
-		else
-			return new Commandline("sh");
-	}
-	
-	public String[] getShell(boolean isWindows, @Nullable String workingDir) {
-		if (workingDir != null) {
-			if (isWindows)
-				return new String[]{"cmd", "/c", String.format("cd '%s' && cmd", workingDir)};
-			else
-			return new String[]{"sh", "-c", String.format("cd '%s' && sh", workingDir)};
-		} else if (isWindows) {
-			return new String[]{"cmd"};
-		} else {
-			return new String[]{"sh"};
-		}
+	public String getExecutable() {
+		return interpreter.getShellAccessor().getExecutable();
 	}
 
 	public String getScriptExtension() {
-		if (SystemUtils.IS_OS_WINDOWS)
-			return ".bat";
-		else
-			return ".sh";
+		return interpreter.getShellAccessor().getScriptExtension();
 	}
 
 	public String getEndOfLine() {
-		if (SystemUtils.IS_OS_WINDOWS)
-			return "\r\n";
-		else
-			return "\n";
+		return interpreter.getShellAccessor().getEndOfLine();
 	}
 
 	public String normalizeCommands(String commands) {
-		var builder = new StringBuilder();
-		for (var line : Splitter.on('\n').trimResults(CharMatcher.is('\r')).split(commands))
-			builder.append(line).append(getEndOfLine());
-		return builder.toString();
+		return interpreter.getShellAccessor().normalizeCommands(commands);
 	}
 
 	public CommandFacade replacePlaceholders(File buildDir) {
 		var image = KubernetesHelper.replacePlaceholders(this.image, buildDir);
-		return new CommandFacade(image, runAs, registryLogins, commands, envMap, useTTY);
+		return new CommandFacade(image, runAs, registryLogins, envMap, useTTY, interpreter);
 	}
 
 }
