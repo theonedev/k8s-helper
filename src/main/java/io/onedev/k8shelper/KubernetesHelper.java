@@ -47,6 +47,7 @@ import javax.ws.rs.core.Response;
 import javax.ws.rs.core.StreamingOutput;
 
 import org.apache.commons.compress.utils.IOUtils;
+import org.apache.commons.io.FilenameUtils;
 import org.apache.commons.lang3.SystemUtils;
 import org.apache.commons.lang3.time.DurationFormatUtils;
 import org.apache.commons.lang3.tuple.ImmutableTriple;
@@ -118,10 +119,6 @@ public class KubernetesHelper {
 	private static File getWorkDir() {
 		return new File(getBuildDir(), WORKDIR);
 	}
-
-	private static File getUserDir() {
-		return new File(getBuildDir(), "user");
-	}
 	
 	private static File getCommandDir() {
 		return new File(getBuildDir(), "command");
@@ -143,7 +140,7 @@ public class KubernetesHelper {
 	}
 
 	private static void generateCommandScript(List<Integer> position, String stepPath,
-			CommandFacade commandFacade, @Nullable File workingDir) {
+			CommandFacade commandFacade, File workingDir) {
 		try {
 			String positionStr = stringifyStepPosition(position);
 			File commandHome = getCommandDir();
@@ -174,10 +171,9 @@ public class KubernetesHelper {
 					"  echo " + LOG_END_MESSAGE,
 					"  exit 0",
 					"fi",
-					"cd " + (workingDir!=null? "'" + workingDir.getAbsolutePath() + "'": "$initialWorkingDir")
-							+ " && test -w $HOME && cp -r -f -p /onedev-build/user/. $HOME || export HOME=/onedev-build/user"
-							+ " && echo '" + TaskLogger.wrapWithAnsiNotice("Running step \"" + escapedStepPath + "\"...") + "'"
-							+ " && " + commandFacade.buildScriptCmdline() + " " + stepScriptFile.getAbsolutePath(),
+					"cd " + "'" + workingDir.getAbsolutePath() + "'",
+					"echo '" + TaskLogger.wrapWithAnsiNotice("Running step \"" + escapedStepPath + "\"...") + "'",
+					commandFacade.getExecutable() + " " + commandFacade.getScriptOptions() + " " + stepScriptFile.getAbsolutePath(),
 					"exitCode=\"$?\"",
 					"if [ $exitCode -eq 0 ]",
 					"then",
@@ -218,8 +214,9 @@ public class KubernetesHelper {
 		};
 	}
 
-	public static void installGitCert(Commandline git, File trustCertsDir, File trustCertsFile,
-									  String sslCAInfoPath, LineConsumer infoLogger, LineConsumer errorLogger) {
+	public static List<String> setupGitCerts(Commandline git, File trustCertsDir, File trustCertsFile,
+									  String runtimeTrustCertsFilePath, LineConsumer stdoutLogger, 
+									  LineConsumer stderrLogger) {
 		if (trustCertsDir.exists()) {
 			List<String> certLines = new ArrayList<>();
 			for (var file: trustCertsDir.listFiles()) {
@@ -238,11 +235,12 @@ public class KubernetesHelper {
 				} catch (IOException e) {
 					throw new RuntimeException(e);
 				}
-				git.addArgs("config", "--global", "http.sslCAInfo", sslCAInfoPath);
-				git.execute(infoLogger, errorLogger).checkReturnCode();
-				git.clearArgs();
+				git.arguments("config", "http.sslCAInfo", runtimeTrustCertsFilePath);
+				git.execute(stdoutLogger, stderrLogger).checkReturnCode();
+				return List.of("-c", "http.sslCAInfo=" + trustCertsFile.getAbsolutePath());
 			}
 		}
+		return List.of();
 	}
 	
 	public static void init(String serverUrl, String jobToken, boolean test) {
@@ -250,7 +248,6 @@ public class KubernetesHelper {
 		try {
 			FileUtils.createDir(getCommandDir());
 			FileUtils.createDir(getMarkDir());
-			FileUtils.createDir(getUserDir());
 			if (test) {
 				logger.info("Connecting to server '{}'...", serverUrl);
 				Client client = buildRestClient(sslFactory);
@@ -384,18 +381,13 @@ public class KubernetesHelper {
 	}
 
 	public static void installGitLfs(Commandline git, LineConsumer stdoutLogger, LineConsumer stderrLogger) {
-		List<String> initialArgs = new ArrayList<>(git.arguments());
-		git.addArgs("lfs", "install", "--force");
+		git.arguments("lfs", "install", "--force");
 		git.execute(stdoutLogger, stderrLogger).checkReturnCode();
-		git.arguments(initialArgs);
 	}
 
-	public static void cloneRepository(Commandline git, String cloneUrl, String remoteUrl, 
-				String refName, @Nullable String commitHash, boolean withLfs, boolean withSubmodules, 
-				int cloneDepth, LineConsumer stdoutLogger, LineConsumer stderrLogger) {
-		List<String> initialArgs = new ArrayList<>(git.arguments());
+	public static void initRepository(Commandline git, LineConsumer stdoutLogger, LineConsumer stderrLogger) {
 		if (!new File(git.workingDir(), ".git").exists()) {
-			git.addArgs("init", ".");
+			git.arguments("init", ".");
 			git.execute(new LineConsumer() {
 
 				@Override
@@ -404,18 +396,29 @@ public class KubernetesHelper {
 						stdoutLogger.consume(line);
 				}
 
-			}, new LineConsumer() {
+			}, stderrLogger).checkReturnCode();
+		}
+	}
 
-				@Override
-				public void consume(String line) {
-					if (!line.startsWith("hint:"))
-						stderrLogger.consume(line);
-				}
+	/**
+	 * The git arguments should be initialized with remote access arguments before calling this method. 
+	 * Also .git/config inside the git working directory should also be set up for runtime (while job 
+	 * or workspace runs) remote access
+	 */
+	public static void cloneRepository(Commandline git, String cloneUrl, String remoteUrl, 
+				String refName, @Nullable String commitHash, boolean withLfs, boolean withSubmodules, 
+				int cloneDepth, LineConsumer stdoutLogger, LineConsumer stderrLogger) {
 
-			}).checkReturnCode();
+		String configContent;
+		try {
+			var configFile = new File(git.workingDir(), ".git/config");
+			configContent = FileUtils.readFileToString(configFile, UTF_8);
+		} catch (IOException e) {
+			throw new RuntimeException(e);
 		}
 
-		git.arguments(initialArgs);
+		var remoteAccessArgs = new ArrayList<>(git.arguments());
+
 		git.addArgs("fetch", cloneUrl, "--force", "--quiet");
 		if (cloneDepth != 0)
 			git.addArgs("--depth=" + cloneDepth);
@@ -423,7 +426,7 @@ public class KubernetesHelper {
 		git.execute(stdoutLogger, stderrLogger).checkReturnCode();
 
 		AtomicBoolean originExists = new AtomicBoolean(false);
-		git.arguments(initialArgs);
+		git.arguments(remoteAccessArgs);
 		git.addArgs("remote", "add", "origin", remoteUrl);
 		var result = git.execute(stdoutLogger, new LineConsumer() {
 
@@ -438,7 +441,7 @@ public class KubernetesHelper {
 		});
 
 		if (originExists.get()) {
-			git.arguments(initialArgs);
+			git.arguments(remoteAccessArgs);
 			git.addArgs("remote", "set-url", "origin", remoteUrl);
 			result = git.execute(stdoutLogger, new LineConsumer() {
 
@@ -457,7 +460,7 @@ public class KubernetesHelper {
 
 		var fetched = commitHash != null ? commitHash : "FETCH_HEAD";
 
-		git.arguments(initialArgs);
+		git.arguments(remoteAccessArgs);
 		git.addArgs("checkout", "--quiet", fetched);
 		git.execute(stdoutLogger, new LineConsumer() {
 
@@ -473,7 +476,7 @@ public class KubernetesHelper {
 
 		if (withSubmodules && new File(git.workingDir(), ".gitmodules").exists()) {
 			// deinit submodules in case submodule url is changed
-			git.arguments(initialArgs);
+			git.arguments(remoteAccessArgs);
 			git.addArgs("submodule", "deinit", "--all", "--force", "--quiet");
 			git.execute(stdoutLogger, new LineConsumer() {
 
@@ -489,7 +492,7 @@ public class KubernetesHelper {
 
 			stdoutLogger.consume("Retrieving submodules...");
 
-			git.arguments(initialArgs);
+			git.arguments(remoteAccessArgs);
 			git.addArgs("submodule", "update", "--init", "--recursive", "--force", "--quiet");
 			if (cloneDepth != 0)
 				git.addArgs("--depth=" + cloneDepth);
@@ -507,15 +510,21 @@ public class KubernetesHelper {
 				}
 
 			}).checkReturnCode();
+
+			if (configContent != null) {
+				var modulesDir = new File(git.workingDir(), ".git/modules");
+				if (modulesDir.isDirectory())
+					writeConfigToSubmodules(modulesDir, configContent);
+			}
 		}
 
 		if (refName.startsWith("refs/heads/")) {
-			git.arguments(initialArgs);
+			git.arguments(remoteAccessArgs);
 			git.addArgs("update-ref", refName, fetched);
 			git.execute(stdoutLogger, stderrLogger).checkReturnCode();
 
 			String branch = refName.substring("refs/heads/".length());
-			git.arguments(initialArgs);
+			git.arguments(remoteAccessArgs);
 			git.addArgs("checkout", branch);
 			git.execute(stdoutLogger, new LineConsumer() {
 
@@ -529,25 +538,29 @@ public class KubernetesHelper {
 
 			}).checkReturnCode();
 
-			git.arguments(initialArgs);
+			git.arguments(remoteAccessArgs);
 			git.addArgs("update-ref", "refs/remotes/origin/" + branch, fetched);
 			git.execute(stdoutLogger, stderrLogger).checkReturnCode();
 
-			git.arguments(initialArgs);
+			git.arguments(remoteAccessArgs);
 			git.addArgs("branch", "--set-upstream-to=origin/" + branch, branch);
 			git.execute(stdoutLogger, stderrLogger).checkReturnCode();
 		}
-
-		git.arguments(initialArgs);
 	}
 
-	public static void setupGitForRemoteAccess(
-			Commandline git, File userDir, File trustCertsDir, File trustCertsFile,
-			CloneInfo cloneInfo, LineConsumer infoLogger, LineConsumer errorLogger) {
-		git.environments().put("HOME", userDir.getAbsolutePath());
-		installGitCert(git, trustCertsDir, trustCertsFile,
-				trustCertsFile.getAbsolutePath(), infoLogger, errorLogger);
-		cloneInfo.writeAuthData(userDir, git, false, infoLogger, errorLogger);
+	private static void writeConfigToSubmodules(File modulesDir, String configContent) {
+		for (File child : modulesDir.listFiles()) {
+			if (child.isDirectory()) {
+				try {
+					FileUtils.writeStringToFile(new File(child, "config"), configContent, UTF_8);
+				} catch (IOException e) {
+					throw new RuntimeException(e);
+				}
+				var nestedModulesDir = new File(child, "modules");
+				if (nestedModulesDir.isDirectory())
+					writeConfigToSubmodules(nestedModulesDir, configContent);
+			}
+		}
 	}
 
 	private static K8sJobData readJobData() {
@@ -561,40 +574,33 @@ public class KubernetesHelper {
 	}
 	
 	public static void testGitLfsAvailability(Commandline git, TaskLogger jobLogger) {
-		File userDir = FileUtils.createTempDir("user");
-		try {
-			jobLogger.log("Checking if git-lfs exists...");
-			git.clearArgs();
-			git.environments().put("HOME", userDir.getAbsolutePath());
-			
-			git.addArgs("lfs", "version");
+		jobLogger.log("Checking if git-lfs exists...");
+		
+		git.arguments("lfs", "version");
 
-			AtomicBoolean lfsExists = new AtomicBoolean(true);
-			var result = git.execute(new LineConsumer() {
+		AtomicBoolean lfsExists = new AtomicBoolean(true);
+		var result = git.execute(new LineConsumer() {
 
-				@Override
-				public void consume(String line) {
-				}
-				
-			}, new LineConsumer() {
-
-				@Override
-				public void consume(String line) {
-					if (line.startsWith("git: 'lfs' is not a git command"))
-						lfsExists.set(false);
-					if (lfsExists.get())
-						jobLogger.error(line);
-				}
-				
-			});
-			if (lfsExists.get()) {
-				result.checkReturnCode();
-				jobLogger.log("git-lfs found");
-			} else { 
-				jobLogger.warning("WARNING: Executable 'git-lfs' not found. You will not be able to retrieve LFS files");
+			@Override
+			public void consume(String line) {
 			}
-		} finally {
-			FileUtils.deleteDir(userDir, 3);
+			
+		}, new LineConsumer() {
+
+			@Override
+			public void consume(String line) {
+				if (line.startsWith("git: 'lfs' is not a git command"))
+					lfsExists.set(false);
+				if (lfsExists.get())
+					jobLogger.error(line);
+			}
+			
+		});
+		if (lfsExists.get()) {
+			result.checkReturnCode();
+			jobLogger.log("git-lfs found");
+		} else { 
+			jobLogger.warning("WARNING: Executable 'git-lfs' not found. You will not be able to retrieve LFS files");
 		}
 	}
 
@@ -613,6 +619,19 @@ public class KubernetesHelper {
 			}
 
 		}).checkReturnCode();
+	}
+
+	public static void setupSafeDirectory(Commandline git, String containerWorkDirPath, 
+			@Nullable String checkoutPath, LineConsumer stdoutLogger, LineConsumer stderrLogger) {
+		String containerCheckoutPath = containerWorkDirPath;
+		if (checkoutPath != null)
+			containerCheckoutPath += "/" + StringUtils.stripStart(checkoutPath, "/\\");
+		git.arguments("config", "--add", "safe.directory", containerCheckoutPath);
+
+		// no need to check result as earlier git version may not support this option and
+		// not able to set up safe directory is not a big deal (git will prompt to set up
+		// safe directory when operate on working directory later)
+		git.execute(stdoutLogger, stderrLogger);
 	}
 
 	public static boolean sidecar(String serverUrl, String jobToken, boolean test) {
@@ -702,15 +721,14 @@ public class KubernetesHelper {
 					var cacheConfig = cacheInfo.getLeft();
 					var uploadStrategy = cacheConfig.getUploadStrategy();
 					var cacheDirs = new ArrayList<File>();
-					for (var cachePath : cacheConfig.getPaths()) 
-						cacheDirs.add(getCacheDir(cachePath));
+					for (var path : cacheConfig.getPaths()) 
+						cacheDirs.add(getCacheDir(path));
 					if (uploadStrategy == UPLOAD_IF_NOT_EXACT_MATCH) {
 						if (!cacheInfo.getRight())
 							uploadCacheThenLog(serverUrl, jobToken, cacheConfig, cacheDirs, sslFactory);
 					} else {
-						var changedFile = CacheProvisioner.getChangedFile(cacheDirs, cacheInfo.getMiddle(), cacheConfig);
-						if (changedFile != null) {
-							logger.info("Cache file changed: " + changedFile);
+						if (FileUtils.hasChangedFiles(cacheDirs, cacheInfo.getMiddle(), cacheConfig.getChangeDetectionExcludes())) {
+							logger.info("Cache changed");
 							uploadCacheThenLog(serverUrl, jobToken, cacheConfig, cacheDirs, sslFactory);
 						}
 					}
@@ -782,8 +800,6 @@ public class KubernetesHelper {
 		LineConsumer infoLogger = newInfoLogger();
 		LineConsumer errorLogger = newErrorLogger();
 		
-		File userHomeDir = new File(System.getProperty("user.home"));
-
 		File workDir = getWorkDir();
 		Commandline git = new Commandline("git");
 		if (checkoutPath != null) {
@@ -795,21 +811,19 @@ public class KubernetesHelper {
 			git.workingDir(workDir);
 		}
 
-		File trustCertsFile = new File(getBuildDir(), "trust-certs.pem");
-		installGitCert(git, getTrustCertsDir(), trustCertsFile,
-				trustCertsFile.getAbsolutePath(), infoLogger, errorLogger);
-		cloneInfo.writeAuthData(userHomeDir, git, true, infoLogger, errorLogger);
+		initRepository(git, infoLogger, errorLogger);
 
-		// Also populate auth info into user dir which will be shared
-		// with other containers. The setup script of other contains will 
-		// move all auth data from buildUserHome into the user home so that
-		// git pull/push can be done without asking for credentials
-		File userDir = getUserDir();
-		Commandline anotherGit = new Commandline("git");
-		anotherGit.environments().put("HOME", userDir.getAbsolutePath());
-		installGitCert(anotherGit, getTrustCertsDir(), trustCertsFile,
-				trustCertsFile.getAbsolutePath(), infoLogger, errorLogger);
-		cloneInfo.writeAuthData(userDir, anotherGit, true, infoLogger, errorLogger);
+		var remoteAccessArgs = new ArrayList<String>();
+		
+		File trustCertsFile = new File(getBuildDir(), "trust-certs.pem");
+		remoteAccessArgs.addAll(setupGitCerts(git, getTrustCertsDir(), trustCertsFile,
+				trustCertsFile.getAbsolutePath(), infoLogger, errorLogger));
+
+		var buildDir = getBuildDir();
+		remoteAccessArgs.addAll(cloneInfo.setupGitAuth(git, buildDir, buildDir.getAbsolutePath(), 
+				infoLogger, errorLogger));
+
+		git.arguments(remoteAccessArgs);
 
 		cloneRepository(git, cloneInfo.getCloneUrl(), cloneInfo.getCloneUrl(), 
 				jobData.getRefName(), jobData.getCommitHash(), withLfs, withSubmodules, cloneDepth, 
@@ -930,13 +944,11 @@ public class KubernetesHelper {
 		}
 	}
 
-	private static File getCacheDir(CachePathFacade cachePath) {
-		if (cachePath.isAbsolute())
-			return new File(cachePath.getPath());
-		else if (cachePath.isRelativeToHomeIfNotAbsolute())
-			return cachePath.resolveAgainst(getUserDir());
+	private static File getCacheDir(String path) {
+		if (FilenameUtils.getPrefixLength(path) > 0)
+			return new File(path);
 		else 
-			return cachePath.resolveAgainst(getWorkDir());
+			return new File(getWorkDir(), path);
 	}
 
 	static void setupCache(String serverUrl, String jobToken, String positionStr) {
@@ -957,16 +969,11 @@ public class KubernetesHelper {
 		
 		var cachePaths = cacheConfig.getPaths();
 
-		for (var cachePath: cachePaths) {
-			if (cachePath.isRelativeToHomeIfNotAbsolute() && !cachePath.isAbsolute())
-				throw new ExplicitException("Kubernetes executor does not allow home relative cache path (" + cachePath.getPath() + "). Use absolute path instead");
-		}		
-
 		var sslFactory = buildSSLFactory(getTrustCertsDir());
 
 		var cacheDirs = new ArrayList<File>();
-		for (var cachePath: cachePaths) {
-			File cacheDir = getCacheDir(cachePath);
+		for (var path: cachePaths) {
+			File cacheDir = getCacheDir(path);
 			FileUtils.createDir(cacheDir);
 			cacheDirs.add(cacheDir);
 		}

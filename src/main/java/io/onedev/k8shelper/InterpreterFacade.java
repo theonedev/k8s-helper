@@ -16,7 +16,7 @@ public abstract class InterpreterFacade implements Serializable {
 		return commands;
 	}
 
-	public abstract ShellAccessor getShellAccessor();
+	public abstract ShellFacility getShellFacility();
 
 	protected abstract String getPauseInvokeCommand();
 

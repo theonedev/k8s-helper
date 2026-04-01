@@ -12,8 +12,8 @@ public class ShellFacade extends InterpreterFacade {
 	}
 
 	@Override
-	public ShellAccessor getShellAccessor() {
-		return new LinuxShellAccessor(shell);
+	public ShellFacility getShellFacility() {
+		return new LinuxShellFacility(shell);
 	}
 
 	@Override

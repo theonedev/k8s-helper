@@ -1,14 +1,12 @@
 package io.onedev.k8shelper;
 
-import io.onedev.commons.utils.command.Commandline;
-
-public class LinuxShellAccessor extends ShellAccessor {
+public class LinuxShellFacility extends ShellFacility {
 
 	private static final long serialVersionUID = 1L;
 
 	private final String shell;
 
-	public LinuxShellAccessor(String shell) {
+	public LinuxShellFacility(String shell) {
 		this.shell = shell;
 	}
 
@@ -18,8 +16,8 @@ public class LinuxShellAccessor extends ShellAccessor {
 	}
 
 	@Override
-	public Commandline buildScriptCmdline() {
-		return new Commandline(shell);
+	public String[] getScriptOptions() {
+		return new String[0];
 	}
 
 	@Override

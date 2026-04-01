@@ -2,9 +2,7 @@ package io.onedev.k8shelper;
 
 import org.apache.commons.lang3.SystemUtils;
 
-import io.onedev.commons.utils.command.Commandline;
-
-public class DefaultShellAccessor extends ShellAccessor {
+public class DefaultShellFacility extends ShellFacility {
 
 	private static final long serialVersionUID = 1L;
 
@@ -17,11 +15,11 @@ public class DefaultShellAccessor extends ShellAccessor {
 	}
 
 	@Override
-	public Commandline buildScriptCmdline() {
+	public String[] getScriptOptions() {
 		if (SystemUtils.IS_OS_WINDOWS)
-			return new Commandline("cmd").addArgs("/c");
+			return new String[] {"/c"};
 		else
-			return new Commandline("sh");
+			return new String[0];
 	}
 
 	@Override
@@ -39,5 +37,5 @@ public class DefaultShellAccessor extends ShellAccessor {
 		else
 			return "\n";
 	}
-
+	
 }

@@ -1,14 +1,12 @@
 package io.onedev.k8shelper;
 
-import io.onedev.commons.utils.ExplicitException;
-import io.onedev.commons.utils.FileUtils;
-import io.onedev.commons.utils.StringUtils;
-import io.onedev.commons.utils.command.Commandline;
-import io.onedev.commons.utils.command.LineConsumer;
-import org.apache.commons.lang3.SystemUtils;
+import java.io.File;
 
 import org.jspecify.annotations.Nullable;
-import java.io.File;
+
+import io.onedev.commons.utils.ExplicitException;
+import io.onedev.commons.utils.FileUtils;
+import io.onedev.commons.utils.command.Commandline;
 
 public class CheckoutFacade extends LeafFacade {
 
@@ -62,23 +60,6 @@ public class CheckoutFacade extends LeafFacade {
 		} else {
 			git.workingDir(workDir);
 		}
-	}
-
-	public void setupSafeDirectory(Commandline git, String containerWorkDirPath,
-								   LineConsumer infoLogger, LineConsumer errorLogger) {
-		String containerCheckoutPath = containerWorkDirPath;
-		if (SystemUtils.IS_OS_WINDOWS)
-			containerCheckoutPath = containerCheckoutPath.replace('\\', '/');
-		if (getCheckoutPath() != null)
-			containerCheckoutPath += "/" + StringUtils.stripStart(getCheckoutPath(), "/\\");
-		git.addArgs("config", "--global", "--add", "safe.directory", containerCheckoutPath);
-
-		// no need to check result as earlier git version may not support this option and
-		// not able to set up safe directory is not a big deal (git will prompt to set up
-		// safe directory when operate on working directory later)
-		git.execute(infoLogger, errorLogger);
-
-		git.clearArgs();
 	}
 
 }

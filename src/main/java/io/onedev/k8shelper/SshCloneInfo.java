@@ -3,6 +3,7 @@ package io.onedev.k8shelper;
 import java.io.File;
 import java.nio.charset.StandardCharsets;
 import java.util.Base64;
+import java.util.List;
 
 import org.apache.commons.lang3.SystemUtils;
 
@@ -26,16 +27,16 @@ public class SshCloneInfo extends CloneInfo {
 	}
 
 	@Override
-	public void writeAuthData(File homeDir, Commandline git, boolean forContainer,
-							  LineConsumer infoLogger, LineConsumer errorLogger) {
-		File sshDir = new File(homeDir, ".ssh");
+	public List<String> setupGitAuth(Commandline git, File resourceDir, String runtimeResourceDirPath,
+							  LineConsumer stdoutLogger, LineConsumer stderrLogger) {
+		File sshDir = new File(resourceDir, ".ssh");
 		FileUtils.createDir(sshDir);
 		
 		File privateKeyFile = new File(sshDir, "id_rsa");
 		if (privateKeyFile.exists() && !SystemUtils.IS_OS_WINDOWS) {
 			Commandline chmod = new Commandline("chmod");
 			chmod.workingDir(sshDir).addArgs("600", "id_rsa");
-			chmod.execute(infoLogger, errorLogger).checkReturnCode();
+			chmod.execute(stdoutLogger, stderrLogger).checkReturnCode();
 		}
 		
 		FileUtils.writeFile(privateKeyFile, privateKey);
@@ -45,16 +46,17 @@ public class SshCloneInfo extends CloneInfo {
 		if (!SystemUtils.IS_OS_WINDOWS) {
 			Commandline chmod = new Commandline("chmod");
 			chmod.workingDir(sshDir).addArgs("400", "id_rsa");
-			chmod.execute(infoLogger, errorLogger).checkReturnCode();
-
-			String sshCommand = "ssh -i \"" + privateKeyFile.getAbsolutePath() + "\" -o UserKnownHostsFile=\"" + knownHostsFile.getAbsolutePath() + "\" -F /dev/null";
-			if (!forContainer) {
-				git.addArgs("config", "--global", "core.sshCommand", sshCommand);
-				git.execute(infoLogger, errorLogger).checkReturnCode();
-				git.clearArgs();
-			}
-			git.addArgs("-c", "core.sshCommand=" + sshCommand);
+			chmod.execute(stdoutLogger, stderrLogger).checkReturnCode();
 		}
+		
+		var runtimePrivateKeyFilePath = runtimeResourceDirPath + "/.ssh/" + privateKeyFile.getName();
+		var runtimeKnownHostsFilePath = runtimeResourceDirPath + "/.ssh/" + knownHostsFile.getName();
+
+		var sshCommand = "ssh -i \"" + runtimePrivateKeyFilePath + "\" -o UserKnownHostsFile=\"" + runtimeKnownHostsFilePath + "\" -F /dev/null";
+		git.arguments("config", "core.sshCommand", sshCommand);
+		git.execute(stdoutLogger, stderrLogger).checkReturnCode();
+
+		return List.of("-c", "core.sshCommand=ssh -i \"" + privateKeyFile.getAbsolutePath() + "\" -o UserKnownHostsFile=\"" + knownHostsFile.getAbsolutePath() + "\" -F /dev/null");
 	}
 
 	@Override

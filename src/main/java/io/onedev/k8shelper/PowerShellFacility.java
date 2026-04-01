@@ -1,14 +1,12 @@
 package io.onedev.k8shelper;
 
-import io.onedev.commons.utils.command.Commandline;
-
-public class PowerShellAccessor extends ShellAccessor {
+public class PowerShellFacility extends ShellFacility {
 
 	private static final long serialVersionUID = 1L;
 
 	private final String powershell;
 
-	public PowerShellAccessor(String powershell) {
+	public PowerShellFacility(String powershell) {
 		this.powershell = powershell;
 	}
 
@@ -18,8 +16,8 @@ public class PowerShellAccessor extends ShellAccessor {
 	}
 
 	@Override
-	public Commandline buildScriptCmdline() {
-		return new Commandline(powershell).addArgs("-executionpolicy", "remotesigned", "-file");
+	public String[] getScriptOptions() {
+		return new String[] { "-executionpolicy", "remotesigned", "-file" };
 	}
 
 	@Override

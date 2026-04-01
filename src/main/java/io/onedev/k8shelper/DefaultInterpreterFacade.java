@@ -11,8 +11,8 @@ public class DefaultInterpreterFacade extends InterpreterFacade {
 	}
 
 	@Override
-	public ShellAccessor getShellAccessor() {
-		return new DefaultShellAccessor();
+	public ShellFacility getShellFacility() {
+		return new DefaultShellFacility();
 	}
 
 	@Override

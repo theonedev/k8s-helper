@@ -8,7 +8,6 @@ import org.apache.commons.lang3.SystemUtils;
 import org.jspecify.annotations.Nullable;
 
 import io.onedev.commons.utils.FileUtils;
-import io.onedev.commons.utils.command.Commandline;
 
 public class CommandFacade extends LeafFacade {
 
@@ -95,24 +94,24 @@ public class CommandFacade extends LeafFacade {
 		FileUtils.writeFile(new File(buildDir, "pause"), interpreter.getPauseInvokeCommand());
 	}
 	
-	public Commandline buildScriptCmdline() {
-		return interpreter.getShellAccessor().buildScriptCmdline();
+	public String[] getScriptOptions() {
+		return interpreter.getShellFacility().getScriptOptions();
 	}
 	
 	public String getExecutable() {
-		return interpreter.getShellAccessor().getExecutable();
+		return interpreter.getShellFacility().getExecutable();
 	}
 
 	public String getScriptExtension() {
-		return interpreter.getShellAccessor().getScriptExtension();
+		return interpreter.getShellFacility().getScriptExtension();
 	}
 
 	public String getEndOfLine() {
-		return interpreter.getShellAccessor().getEndOfLine();
+		return interpreter.getShellFacility().getEndOfLine();
 	}
 
 	public String normalizeCommands(String commands) {
-		return interpreter.getShellAccessor().normalizeCommands(commands);
+		return interpreter.getShellFacility().normalizeCommands(commands);
 	}
 
 	public CommandFacade replacePlaceholders(File buildDir) {

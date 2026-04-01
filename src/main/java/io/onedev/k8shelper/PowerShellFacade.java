@@ -12,8 +12,8 @@ public class PowerShellFacade extends InterpreterFacade {
 	}
 
 	@Override
-	public ShellAccessor getShellAccessor() {
-		return new PowerShellAccessor(powershell);
+	public ShellFacility getShellFacility() {
+		return new PowerShellFacility(powershell);
 	}
 
 	@Override

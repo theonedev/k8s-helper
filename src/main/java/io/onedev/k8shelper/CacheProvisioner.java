@@ -1,6 +1,5 @@
 package io.onedev.k8shelper;
 
-import static io.onedev.commons.utils.StringUtils.parseQuoteTokens;
 import static io.onedev.k8shelper.UploadStrategy.UPLOAD_IF_NOT_EXACT_MATCH;
 
 import java.io.File;
@@ -8,20 +7,14 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.nio.ByteBuffer;
-import java.nio.file.FileVisitResult;
-import java.nio.file.FileVisitor;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.attribute.BasicFileAttributes;
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.Date;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
-import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Function;
 
+import org.apache.commons.io.FilenameUtils;
 import org.apache.commons.io.IOUtils;
 import org.apache.commons.lang3.tuple.ImmutablePair;
 import org.apache.commons.lang3.tuple.Pair;
@@ -36,7 +29,6 @@ import io.onedev.commons.utils.FileUtils;
 import io.onedev.commons.utils.TarUtils;
 import io.onedev.commons.utils.TaskLogger;
 import io.onedev.commons.utils.command.Commandline;
-import io.onedev.commons.utils.match.WildcardUtils;
 
 public abstract class CacheProvisioner {
 
@@ -58,20 +50,18 @@ public abstract class CacheProvisioner {
 
     public void setupCache(CacheConfigFacade cacheConfig) {
         List<File> cacheDirs = new ArrayList<>();
-        for (var cachePath: cacheConfig.getPaths()) {
-            if (cachePath.getPath().contains(".."))
-                throw new ExplicitException("Cache path does not allow to contain '..': " + cachePath.getPath());
+        for (var path: cacheConfig.getPaths()) {
+            if (path.contains(".."))
+                throw new ExplicitException("Cache path does not allow to contain '..': " + path);
 
             File cacheDir;
-            if (cachePath.isAbsolute()) {
+            if (FilenameUtils.getPrefixLength(path) > 0) {
                 int count = 0;
-                for (var cache: allocations)
-                    count += cache.getDirs().size();
+                for (var allocation: allocations)
+                    count += allocation.getDirs().size();
                 cacheDir = new File(baseDir, "cache/" + (count + cacheDirs.size() + 1));
-            } else if (cachePath.isRelativeToHomeIfNotAbsolute()) {
-                cacheDir = cachePath.resolveAgainst(new File(baseDir, "user"));
             } else {
-                cacheDir = cachePath.resolveAgainst(new File(baseDir, "work"));
+                cacheDir = new File(new File(baseDir, "work"), path);
             }
             FileUtils.createDir(cacheDir);
             cacheDirs.add(cacheDir);
@@ -80,15 +70,16 @@ public abstract class CacheProvisioner {
         cacheConfig.replacePlaceholders(baseDir);
         cacheConfig.computeChecksum(new File(baseDir, "work"), logger);
 
-        allocations.add(new CacheAllocation(cacheConfig, cacheDirs, new Date()));
-
-        var cacheAvailability = downloadCache(cacheConfig.getKey(), cacheConfig.getChecksum(), cacheConfig.getPathsAsString(), cacheDirs);
+        var cacheAvailability = downloadCache(
+                cacheConfig.getKey(), cacheConfig.getChecksum(), 
+                cacheConfig.getPathsAsString(), cacheDirs);
         if (cacheAvailability == CacheAvailability.EXACT_MATCH) {
             logger.log(String.format("Exact matched %s", cacheConfig.describe()));
             exactMatchCacheKeyAndChecksums.add(ImmutablePair.of(cacheConfig.getKey(), cacheConfig.getChecksum()));
         } else if (cacheAvailability == CacheAvailability.PARTIAL_MATCH) {
             logger.log(String.format("Partial matched %s", cacheConfig.describe()));    
         }
+        allocations.add(new CacheAllocation(cacheConfig, cacheDirs, new Date()));
     }
 
     private void uploadCacheThenLog(CacheConfigFacade cacheConfig, List<File> cacheDirs) {
@@ -99,16 +90,15 @@ public abstract class CacheProvisioner {
     }
 
     public void uploadCaches() {
-        for (var cache : allocations) {
-            var cacheConfig = cache.getDefinition();
-            var cacheDirs = cache.getDirs();
+        for (var allocation : allocations) {
+            var cacheConfig = allocation.getConfig();
+            var cacheDirs = allocation.getDirs();
             if (cacheConfig.getUploadStrategy() == UPLOAD_IF_NOT_EXACT_MATCH) {
                 if (!exactMatchCacheKeyAndChecksums.contains(ImmutablePair.of(cacheConfig.getKey(), cacheConfig.getChecksum())))
                     uploadCacheThenLog(cacheConfig, cacheDirs);
             } else {
-                var changedFile = getChangedFile(cacheDirs, cache.getSetupDate(), cacheConfig);
-                if (changedFile != null) {
-                    logger.log("Cache file changed: " + changedFile);
+                if (FileUtils.hasChangedFiles(cacheDirs, allocation.getSetupDate(), cacheConfig.getChangeDetectionExcludes())) {
+                    logger.log("Cache changed");
                     uploadCacheThenLog(cacheConfig, cacheDirs);
                 }
             }
@@ -116,14 +106,14 @@ public abstract class CacheProvisioner {
     }
 
     public void mountVolumes(Commandline docker, Function<String, String> sourceTransformer) {
-        for (var cache: allocations) {
-            var cacheConfig = cache.getDefinition();
-            var cacheDirs = cache.getDirs();
+        for (var allocation: allocations) {
+            var cacheConfig = allocation.getConfig();
+            var cacheDirs = allocation.getDirs();
             for (int i=0; i<cacheConfig.getPaths().size(); i++) {
-                var cachePath = cacheConfig.getPaths().get(i);
-                if (cachePath.isAbsolute()) {
+                var path = cacheConfig.getPaths().get(i);
+                if (FilenameUtils.getPrefixLength(path) > 0) {
                     var mountFrom = sourceTransformer.apply(cacheDirs.get(i).getAbsolutePath());
-                    docker.addArgs("-v", mountFrom + ":" + cachePath.getPath());
+                    docker.addArgs("-v", mountFrom + ":" + path);
                 }
             }
         }
@@ -150,60 +140,6 @@ public abstract class CacheProvisioner {
             throw new RuntimeException(e);
         }
 
-    }
-
-    @Nullable
-    public static String getChangedFile(List<File> cacheDirs, Date sinceDate, CacheConfigFacade cacheConfig) {
-        var excludeFiles = new ArrayList<String>();
-        if (cacheConfig.getChangeDetectionExcludes() != null)
-            Collections.addAll(excludeFiles, parseQuoteTokens(cacheConfig.getChangeDetectionExcludes()));
-        for (var cacheDir: cacheDirs) {
-            try {
-                var changedFile = new AtomicReference<String>(null);
-                Files.walkFileTree(cacheDir.toPath(), new FileVisitor<>() {
-                    @Override
-                    public FileVisitResult preVisitDirectory(Path dir, BasicFileAttributes attrs) {
-                        if (attrs.isSymbolicLink())
-                            return FileVisitResult.SKIP_SUBTREE;
-                        else
-                            return FileVisitResult.CONTINUE;
-                    }
-
-                    @Override
-                    public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) {
-                        if (attrs.isSymbolicLink())
-                            return FileVisitResult.SKIP_SUBTREE;
-                        for (var excludeFile: excludeFiles) {
-                            if (WildcardUtils.matchPath(excludeFile, cacheDir.toPath().relativize(file).toString()))
-                                return FileVisitResult.CONTINUE;
-                        }
-                        if (attrs.creationTime().toMillis() > sinceDate.getTime()
-                                || attrs.lastModifiedTime().toMillis() > sinceDate.getTime()) {
-                            changedFile.set(file.toString());
-                            return FileVisitResult.TERMINATE;
-                        } else {
-                            return FileVisitResult.CONTINUE;
-                        }
-                    }
-
-                    @Override
-                    public FileVisitResult visitFileFailed(Path file, IOException exc) throws IOException {
-                        throw exc;
-                    }
-
-                    @Override
-                    public FileVisitResult postVisitDirectory(Path dir, IOException exc) {
-                        return FileVisitResult.CONTINUE;
-                    }
-
-                });
-                if (changedFile.get() != null)
-                    return changedFile.get();
-            } catch (IOException e) {
-                throw new RuntimeException(e);
-            }
-        }
-        return null;
     }
 
     public static void untar(List<File> cacheDirs, InputStream is) {

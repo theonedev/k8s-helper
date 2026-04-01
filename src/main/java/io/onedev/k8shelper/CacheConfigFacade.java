@@ -25,7 +25,7 @@ public class CacheConfigFacade implements Serializable {
 
     private final Pair<Set<String>, Set<String>> checksumFiles;
 
-    private final List<CachePathFacade> paths;
+    private final List<String> paths;
 
     private final UploadStrategy uploadStrategy;
 
@@ -38,7 +38,7 @@ public class CacheConfigFacade implements Serializable {
     private String checksum;
 
     public CacheConfigFacade(String key, @Nullable Pair<Set<String>, Set<String>> checksumFiles,
-                            List<CachePathFacade> paths, UploadStrategy uploadStrategy,
+                            List<String> paths, UploadStrategy uploadStrategy,
                             @Nullable String changeDetectionExcludes,
                             @Nullable String uploadProjectPath, @Nullable String uploadAccessToken) {
         this.key = key;
@@ -64,12 +64,12 @@ public class CacheConfigFacade implements Serializable {
         return checksum;
     }
 
-    public List<CachePathFacade> getPaths() {
+    public List<String> getPaths() {
         return paths;
     }
 
     public String getPathsAsString() {
-        return paths.stream().map(CachePathFacade::toString).collect(Collectors.joining(","));
+        return paths.stream().collect(Collectors.joining(","));
     }
  
     public UploadStrategy getUploadStrategy() {
