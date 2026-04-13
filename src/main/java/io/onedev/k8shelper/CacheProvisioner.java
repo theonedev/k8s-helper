@@ -9,10 +9,11 @@ import java.io.OutputStream;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.Date;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
-import java.util.function.Function;
 
 import org.apache.commons.io.FilenameUtils;
 import org.apache.commons.io.IOUtils;
@@ -28,7 +29,6 @@ import io.onedev.commons.utils.ExplicitException;
 import io.onedev.commons.utils.FileUtils;
 import io.onedev.commons.utils.TarUtils;
 import io.onedev.commons.utils.TaskLogger;
-import io.onedev.commons.utils.command.Commandline;
 
 public abstract class CacheProvisioner {
 
@@ -105,18 +105,18 @@ public abstract class CacheProvisioner {
         }
     }
 
-    public void mountVolumes(Commandline docker, Function<String, String> sourceTransformer) {
+    public Map<String, File> getPathMap() {
+        var pathMap = new HashMap<String, File>();
         for (var allocation: allocations) {
             var cacheConfig = allocation.getConfig();
             var cacheDirs = allocation.getDirs();
             for (int i=0; i<cacheConfig.getPaths().size(); i++) {
                 var path = cacheConfig.getPaths().get(i);
-                if (FilenameUtils.getPrefixLength(path) > 0) {
-                    var mountFrom = sourceTransformer.apply(cacheDirs.get(i).getAbsolutePath());
-                    docker.addArgs("-v", mountFrom + ":" + path);
-                }
+                if (FilenameUtils.getPrefixLength(path) > 0) 
+                    pathMap.put(path, cacheDirs.get(i));
             }
         }
+        return pathMap;
     }
 
     public static void tar(List<File> cacheDirs, OutputStream os) {

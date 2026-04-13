@@ -389,7 +389,7 @@ public class KubernetesHelper {
 
 	public static void initRepository(Commandline git, LineConsumer stdoutLogger, LineConsumer stderrLogger) {
 		if (!new File(git.workingDir(), ".git").exists()) {
-			git.arguments("init", ".");
+			git.arguments("init", "-b", "main", ".");
 			git.execute(new LineConsumer() {
 
 				@Override
@@ -400,6 +400,35 @@ public class KubernetesHelper {
 
 			}, stderrLogger).checkReturnCode();
 		}
+	}
+
+	public static void setupOriginUrl(Commandline git, String remoteUrl, LineConsumer stdoutLogger, LineConsumer stderrLogger) {
+		var originExists = new AtomicBoolean(false);
+		git.arguments("remote", "add", "origin", remoteUrl);
+		var result = git.execute(stdoutLogger, new LineConsumer() {
+
+			@Override
+			public void consume(String line) {
+				if (line.contains("remote origin already exists"))
+					originExists.set(true);
+				else
+					stderrLogger.consume(line);
+			}
+
+		});
+
+		if (originExists.get()) {
+			git.arguments("remote", "set-url", "origin", remoteUrl);
+			result = git.execute(stdoutLogger, new LineConsumer() {
+
+				@Override
+				public void consume(String line) {
+					stderrLogger.consume(line);
+				}
+
+			});
+		}
+		result.checkReturnCode();
 	}
 
 	/**
@@ -427,35 +456,7 @@ public class KubernetesHelper {
 		git.addArgs(commitHash != null ? commitHash : refName);
 		git.execute(stdoutLogger, stderrLogger).checkReturnCode();
 
-		AtomicBoolean originExists = new AtomicBoolean(false);
-		git.arguments(remoteAccessArgs);
-		git.addArgs("remote", "add", "origin", remoteUrl);
-		var result = git.execute(stdoutLogger, new LineConsumer() {
-
-			@Override
-			public void consume(String line) {
-				if (line.contains("remote origin already exists"))
-					originExists.set(true);
-				else
-					stderrLogger.consume(line);
-			}
-
-		});
-
-		if (originExists.get()) {
-			git.arguments(remoteAccessArgs);
-			git.addArgs("remote", "set-url", "origin", remoteUrl);
-			result = git.execute(stdoutLogger, new LineConsumer() {
-
-				@Override
-				public void consume(String line) {
-					stderrLogger.consume(line);
-				}
-
-			});
-		}
-
-		result.checkReturnCode();
+		setupOriginUrl(git, remoteUrl, stdoutLogger, stderrLogger);
 
 		if (withLfs) 
 			installGitLfs(git, stdoutLogger, stderrLogger);
@@ -628,6 +629,21 @@ public class KubernetesHelper {
 		String containerCheckoutPath = containerWorkDirPath;
 		if (checkoutPath != null)
 			containerCheckoutPath += "/" + StringUtils.stripStart(checkoutPath, "/\\");
+
+		var existingEntries = new ArrayList<String>();
+		git.arguments("config", "--get-all", "safe.directory");
+		var result = git.execute(new LineConsumer() {
+
+			@Override
+			public void consume(String line) {
+				existingEntries.add(line.trim());
+			}
+
+		}, stderrLogger);
+
+		if (result.getReturnCode() == 0 && existingEntries.contains(containerCheckoutPath))
+			return;
+
 		git.arguments("config", "--add", "safe.directory", containerCheckoutPath);
 
 		// no need to check result as earlier git version may not support this option and
