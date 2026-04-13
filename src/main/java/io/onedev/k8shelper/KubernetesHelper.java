@@ -5,7 +5,9 @@ import static io.onedev.k8shelper.CacheProvisioner.tar;
 import static io.onedev.k8shelper.CacheProvisioner.untar;
 import static io.onedev.k8shelper.UploadStrategy.UPLOAD_IF_NOT_EXACT_MATCH;
 import static java.nio.charset.StandardCharsets.UTF_8;
+import static java.util.Arrays.stream;
 import static java.util.Base64.getEncoder;
+import static java.util.stream.Collectors.joining;
 import static java.util.stream.Collectors.toList;
 import static javax.ws.rs.client.Entity.entity;
 import static javax.ws.rs.core.MediaType.APPLICATION_OCTET_STREAM;
@@ -143,16 +145,15 @@ public class KubernetesHelper {
 			CommandFacade commandFacade, File workingDir) {
 		try {
 			String positionStr = stringifyStepPosition(position);
-			File commandHome = getCommandDir();
-			File stepScriptFile = new File(commandHome, "step-" + positionStr + commandFacade.getScriptExtension());
+			File commandDir = getCommandDir();
+			File stepScriptFile = new File(commandDir, "step-" + positionStr + commandFacade.getScriptExtension());
 			FileUtils.writeStringToFile(stepScriptFile, commandFacade.normalizeCommands(commandFacade.getCommands()), UTF_8);
 
 			String escapedStepPath = stepPath.replace("'", "'\\''");
 
-			File scriptFile = new File(commandHome, positionStr + ".sh");
+			File scriptFile = new File(commandDir, positionStr + ".sh");
 			String markPrefix = getMarkDir().getAbsolutePath() + "/" + positionStr;
 			List<String> wrapperScriptContent = Lists.newArrayList(
-					"initialWorkingDir=$(pwd)",
 					"while [ ! -f " + markPrefix + ".start ] && [ ! -f " + markPrefix + ".skip ] && [ ! -f " + markPrefix + ".error ]",
 					"do",
 					"  sleep 0.1",
@@ -173,7 +174,8 @@ public class KubernetesHelper {
 					"fi",
 					"cd " + "'" + workingDir.getAbsolutePath() + "'",
 					"echo '" + TaskLogger.wrapWithAnsiNotice("Running step \"" + escapedStepPath + "\"...") + "'",
-					commandFacade.getExecutable() + " " + commandFacade.getScriptOptions() + " " + stepScriptFile.getAbsolutePath(),
+					commandFacade.getExecutable() + " " + stream(commandFacade.getScriptOptions()).map(it -> it + " ").collect(joining()) + stepScriptFile.getAbsolutePath(),
+
 					"exitCode=\"$?\"",
 					"if [ $exitCode -eq 0 ]",
 					"then",
@@ -339,7 +341,7 @@ public class KubernetesHelper {
 				logger.info("Downloading job dependencies from {}...", serverUrl);
 				
 				downloadDependencies(serverUrl, jobToken, workDir, sslFactory);
-				logger.info("Job workdir initialized");
+				logger.info("Job working directory initialized");
 			}
 		} catch (IOException e) {
 			throw new RuntimeException(e);
