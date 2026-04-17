@@ -607,6 +607,32 @@ public class KubernetesHelper {
 		}
 	}
 
+	public static void testTmuxAvailability(Commandline tmux, TaskLogger jobLogger) {
+		jobLogger.log("Checking if tmux exists...");
+
+		tmux.arguments("-V");
+
+		var result = tmux.execute(new LineConsumer() {
+
+			@Override
+			public void consume(String line) {
+			}
+			
+		}, new LineConsumer() {
+
+			@Override
+			public void consume(String line) {
+				jobLogger.error(line);
+			}
+			
+		});
+		if (result.getReturnCode() == 0) {
+			jobLogger.log("tmux found");
+		} else {
+			throw new ExplicitException("tmux not found");
+		}
+	}	
+
 	public static void changeOwner(File dir, String owner) {
 		var chown = new Commandline("chown");
 		chown.addArgs("-R", owner, dir.getAbsolutePath());
