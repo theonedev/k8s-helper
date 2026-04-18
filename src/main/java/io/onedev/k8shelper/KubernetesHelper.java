@@ -1,8 +1,5 @@
 package io.onedev.k8shelper;
 
-import static io.onedev.commons.utils.TarUtils.untar;
-import static io.onedev.k8shelper.CacheProvisioner.tar;
-import static io.onedev.k8shelper.CacheProvisioner.untar;
 import static io.onedev.k8shelper.UploadStrategy.UPLOAD_IF_NOT_EXACT_MATCH;
 import static java.nio.charset.StandardCharsets.UTF_8;
 import static java.util.Arrays.stream;
@@ -34,6 +31,7 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -101,6 +99,10 @@ public class KubernetesHelper {
 	public static final String PLACEHOLDER_PREFIX = "<&onedev#";
 	
 	public static final String PLACEHOLDER_SUFFIX = "#onedev&>";
+
+	public static final String GIT_TRUST_ALL_DIRS = "(touch \"$HOME/.gitconfig\" "
+				+ "&& (grep -q 'directory=\\*' \"$HOME/.gitconfig\" "
+				+ "|| printf '[safe]\\n\\tdirectory=*\\n' >> \"$HOME/.gitconfig\"))";
 	
 	private static final Pattern PLACEHOLDER_PATTERN = Pattern.compile(PLACEHOLDER_PREFIX + "(.*?)" + PLACEHOLDER_SUFFIX);
 
@@ -174,6 +176,7 @@ public class KubernetesHelper {
 					"fi",
 					"cd " + "'" + workingDir.getAbsolutePath() + "'",
 					"echo '" + TaskLogger.wrapWithAnsiNotice("Running step \"" + escapedStepPath + "\"...") + "'",
+					GIT_TRUST_ALL_DIRS,
 					commandFacade.getExecutable() + " " + stream(commandFacade.getScriptOptions()).map(it -> it + " ").collect(joining()) + stepScriptFile.getAbsolutePath(),
 
 					"exitCode=\"$?\"",
@@ -237,7 +240,7 @@ public class KubernetesHelper {
 				} catch (IOException e) {
 					throw new RuntimeException(e);
 				}
-				git.arguments("config", "http.sslCAInfo", runtimeTrustCertsFilePath);
+				git.args("-c", "safe.directory=*", "config", "http.sslCAInfo", runtimeTrustCertsFilePath);
 				git.execute(stdoutLogger, stderrLogger).checkReturnCode();
 				return List.of("-c", "http.sslCAInfo=" + trustCertsFile.getAbsolutePath());
 			}
@@ -378,18 +381,18 @@ public class KubernetesHelper {
 	public static void addMacUsrLocalBinToPath(Commandline cmdline) {
 		if (SystemUtils.IS_OS_MAC_OSX) {
 			String path = System.getenv("PATH") + ":/usr/local/bin";
-			cmdline.environments().put("PATH", path);
+			cmdline.envs().put("PATH", path);
 		}
 	}
 
 	public static void installGitLfs(Commandline git, LineConsumer stdoutLogger, LineConsumer stderrLogger) {
-		git.arguments("lfs", "install", "--force");
+		git.args("-c", "safe.directory=*", "lfs", "install", "--force");
 		git.execute(stdoutLogger, stderrLogger).checkReturnCode();
 	}
 
 	public static void initRepository(Commandline git, LineConsumer stdoutLogger, LineConsumer stderrLogger) {
 		if (!new File(git.workingDir(), ".git").exists()) {
-			git.arguments("init", "-b", "main", ".");
+			git.args("-c", "safe.directory=*", "init", "-b", "main", ".");
 			git.execute(new LineConsumer() {
 
 				@Override
@@ -404,7 +407,7 @@ public class KubernetesHelper {
 
 	public static void setupOriginUrl(Commandline git, String remoteUrl, LineConsumer stdoutLogger, LineConsumer stderrLogger) {
 		var originExists = new AtomicBoolean(false);
-		git.arguments("remote", "add", "origin", remoteUrl);
+		git.args("-c", "safe.directory=*", "remote", "add", "origin", remoteUrl);
 		var result = git.execute(stdoutLogger, new LineConsumer() {
 
 			@Override
@@ -418,7 +421,7 @@ public class KubernetesHelper {
 		});
 
 		if (originExists.get()) {
-			git.arguments("remote", "set-url", "origin", remoteUrl);
+			git.args("-c", "safe.directory=*", "remote", "set-url", "origin", remoteUrl);
 			result = git.execute(stdoutLogger, new LineConsumer() {
 
 				@Override
@@ -432,7 +435,7 @@ public class KubernetesHelper {
 	}
 
 	/**
-	 * The git arguments should be initialized with remote access arguments before calling this method. 
+	 * The git arguments will be initialized with remote access arguments before calling this method. 
 	 * Also .git/config inside the git working directory should also be set up for runtime (while job 
 	 * or workspace runs) remote access
 	 */
@@ -448,9 +451,9 @@ public class KubernetesHelper {
 			throw new RuntimeException(e);
 		}
 
-		var remoteAccessArgs = new ArrayList<>(git.arguments());
+		var presetArgs = new ArrayList<>(git.args());
 
-		git.addArgs("fetch", cloneUrl, "--force", "--quiet");
+		git.addArgs("-c", "safe.directory=*", "fetch", cloneUrl, "--force", "--quiet"); 
 		if (cloneDepth != 0)
 			git.addArgs("--depth=" + cloneDepth);
 		git.addArgs(commitHash != null ? commitHash : refName);
@@ -463,8 +466,8 @@ public class KubernetesHelper {
 
 		var fetched = commitHash != null ? commitHash : "FETCH_HEAD";
 
-		git.arguments(remoteAccessArgs);
-		git.addArgs("checkout", "--quiet", fetched);
+		git.args(presetArgs);
+		git.addArgs("-c", "safe.directory=*", "checkout", "--quiet", fetched);
 		git.execute(stdoutLogger, new LineConsumer() {
 
 			@Override
@@ -479,8 +482,8 @@ public class KubernetesHelper {
 
 		if (withSubmodules && new File(git.workingDir(), ".gitmodules").exists()) {
 			// deinit submodules in case submodule url is changed
-			git.arguments(remoteAccessArgs);
-			git.addArgs("submodule", "deinit", "--all", "--force", "--quiet");
+			git.args(presetArgs);
+			git.addArgs("-c", "safe.directory=*", "submodule", "deinit", "--all", "--force", "--quiet");
 			git.execute(stdoutLogger, new LineConsumer() {
 
 				@Override
@@ -495,8 +498,8 @@ public class KubernetesHelper {
 
 			stdoutLogger.consume("Retrieving submodules...");
 
-			git.arguments(remoteAccessArgs);
-			git.addArgs("submodule", "update", "--init", "--recursive", "--force", "--quiet");
+			git.args(presetArgs);
+			git.addArgs("-c", "safe.directory=*", "submodule", "update", "--init", "--recursive", "--force", "--quiet");
 			if (cloneDepth != 0)
 				git.addArgs("--depth=" + cloneDepth);
 			git.execute(stdoutLogger, new LineConsumer() {
@@ -522,13 +525,13 @@ public class KubernetesHelper {
 		}
 
 		if (refName.startsWith("refs/heads/")) {
-			git.arguments(remoteAccessArgs);
-			git.addArgs("update-ref", refName, fetched);
+			git.args(presetArgs);
+			git.addArgs("-c", "safe.directory=*", "update-ref", refName, fetched);
 			git.execute(stdoutLogger, stderrLogger).checkReturnCode();
 
 			String branch = refName.substring("refs/heads/".length());
-			git.arguments(remoteAccessArgs);
-			git.addArgs("checkout", branch);
+			git.args(presetArgs);
+			git.addArgs("-c", "safe.directory=*", "checkout", branch);
 			git.execute(stdoutLogger, new LineConsumer() {
 
 				@Override
@@ -541,12 +544,12 @@ public class KubernetesHelper {
 
 			}).checkReturnCode();
 
-			git.arguments(remoteAccessArgs);
-			git.addArgs("update-ref", "refs/remotes/origin/" + branch, fetched);
+			git.args(presetArgs);
+			git.addArgs("-c", "safe.directory=*", "update-ref", "refs/remotes/origin/" + branch, fetched);
 			git.execute(stdoutLogger, stderrLogger).checkReturnCode();
 
-			git.arguments(remoteAccessArgs);
-			git.addArgs("branch", "--set-upstream-to=origin/" + branch, branch);
+			git.args(presetArgs);
+			git.addArgs("-c", "safe.directory=*", "branch", "--set-upstream-to=origin/" + branch, branch);
 			git.execute(stdoutLogger, stderrLogger).checkReturnCode();
 		}
 	}
@@ -579,7 +582,7 @@ public class KubernetesHelper {
 	public static void testGitLfsAvailability(Commandline git, TaskLogger jobLogger) {
 		jobLogger.log("Checking if git-lfs exists...");
 		
-		git.arguments("lfs", "version");
+		git.args("lfs", "version");
 
 		AtomicBoolean lfsExists = new AtomicBoolean(true);
 		var result = git.execute(new LineConsumer() {
@@ -610,7 +613,7 @@ public class KubernetesHelper {
 	public static void testTmuxAvailability(Commandline tmux, TaskLogger jobLogger) {
 		jobLogger.log("Checking if tmux exists...");
 
-		tmux.arguments("-V");
+		tmux.args("-V");
 
 		var result = tmux.execute(new LineConsumer() {
 
@@ -631,11 +634,17 @@ public class KubernetesHelper {
 		} else {
 			throw new ExplicitException("tmux not found");
 		}
-	}	
+	}
 
 	public static void changeOwner(File dir, String owner) {
+		changeOwner(Set.of(dir), owner);
+	}
+
+	public static void changeOwner(Collection<File> dirs, String owner) {
 		var chown = new Commandline("chown");
-		chown.addArgs("-R", owner, dir.getAbsolutePath());
+		chown.addArgs("-R", owner);
+		for (var dir: dirs)
+			chown.addArgs(dir.getAbsolutePath());
 		chown.execute(new LineConsumer() {
 			@Override
 			public void consume(String line) {
@@ -648,34 +657,6 @@ public class KubernetesHelper {
 			}
 
 		}).checkReturnCode();
-	}
-
-	public static void setupSafeDirectory(Commandline git, String containerWorkDirPath, 
-			@Nullable String checkoutPath, LineConsumer stdoutLogger, LineConsumer stderrLogger) {
-		String containerCheckoutPath = containerWorkDirPath;
-		if (checkoutPath != null)
-			containerCheckoutPath += "/" + StringUtils.stripStart(checkoutPath, "/\\");
-
-		var existingEntries = new ArrayList<String>();
-		git.arguments("config", "--get-all", "safe.directory");
-		var result = git.execute(new LineConsumer() {
-
-			@Override
-			public void consume(String line) {
-				existingEntries.add(line.trim());
-			}
-
-		}, stderrLogger);
-
-		if (result.getReturnCode() == 0 && existingEntries.contains(containerCheckoutPath))
-			return;
-
-		git.arguments("config", "--add", "safe.directory", containerCheckoutPath);
-
-		// no need to check result as earlier git version may not support this option and
-		// not able to set up safe directory is not a big deal (git will prompt to set up
-		// safe directory when operate on working directory later)
-		git.execute(stdoutLogger, stderrLogger);
 	}
 
 	public static boolean sidecar(String serverUrl, String jobToken, boolean test) {
@@ -700,7 +681,7 @@ public class KubernetesHelper {
 					if (facade instanceof CommandFacade) {
 						CommandFacade commandFacade = (CommandFacade) facade;
 						commandFacade.generatePauseCommand(getBuildDir());
-						if (commandFacade.getRunAs() != null)
+						if (!commandFacade.getRunAs().equals("0:0"))
 							changeOwner(getBuildDir(), commandFacade.getRunAs());
 					}
 
@@ -764,16 +745,18 @@ public class KubernetesHelper {
 				for (var cacheInfo : cacheInfos) {
 					var cacheConfig = cacheInfo.getLeft();
 					var uploadStrategy = cacheConfig.getUploadStrategy();
-					var cacheDirs = new ArrayList<File>();
-					for (var path : cacheConfig.getPaths()) 
-						cacheDirs.add(getCacheDir(path));
+					var exactMatchPaths = cacheInfo.getRight();
 					if (uploadStrategy == UPLOAD_IF_NOT_EXACT_MATCH) {
-						if (!cacheInfo.getRight())
-							uploadCacheThenLog(serverUrl, jobToken, cacheConfig, cacheDirs, sslFactory);
+						for (var path: cacheConfig.getPaths()) {
+							if (!exactMatchPaths.contains(path)) 
+								uploadCacheThenLog(serverUrl, jobToken, cacheConfig, path, getCacheDir(path), sslFactory);
+						}
 					} else {
-						if (FileUtils.hasChangedFiles(cacheDirs, cacheInfo.getMiddle(), cacheConfig.getChangeDetectionExcludes())) {
-							logger.info("Cache changed");
-							uploadCacheThenLog(serverUrl, jobToken, cacheConfig, cacheDirs, sslFactory);
+						for (var path : cacheConfig.getPaths()) {
+							if (FileUtils.hasChangedFiles(getCacheDir(path), cacheInfo.getMiddle(), cacheConfig.getChangeDetectionExcludes())) {
+								logger.info("Changes detected in " + cacheConfig.describe(path));
+								uploadCacheThenLog(serverUrl, jobToken, cacheConfig, path, getCacheDir(path), sslFactory);
+							}
 						}
 					}
 				}
@@ -783,11 +766,11 @@ public class KubernetesHelper {
 	}
 
 	private static void uploadCacheThenLog(String serverUrl, String jobToken, CacheConfigFacade cacheConfig,
-							 List<File> cacheDirs, @Nullable SSLFactory sslFactory) {
-		if (uploadCache(serverUrl, jobToken, cacheConfig, cacheDirs, sslFactory))
-			logger.info("Uploaded " + cacheConfig.describeUpload());
+							 String path, File cacheDir, @Nullable SSLFactory sslFactory) {
+		if (uploadCache(serverUrl, jobToken, cacheConfig, path, cacheDir, sslFactory))
+			logger.info("Uploaded " + cacheConfig.describeUpload(path));
 		else
-			logger.warn("Not authorized to upload " + cacheConfig.describeUpload());
+			logger.warn("Not authorized to upload " + cacheConfig.describeUpload(path));
 	}
 
 	public static void writeInt(OutputStream os, int value) {
@@ -867,7 +850,7 @@ public class KubernetesHelper {
 		remoteAccessArgs.addAll(cloneInfo.setupGitAuth(git, buildDir, buildDir.getAbsolutePath(), 
 				infoLogger, errorLogger));
 
-		git.arguments(remoteAccessArgs);
+		git.args(remoteAccessArgs);
 
 		cloneRepository(git, cloneInfo.getCloneUrl(), cloneInfo.getCloneUrl(), 
 				jobData.getRefName(), jobData.getCommitHash(), withLfs, withSubmodules, cloneDepth, 
@@ -967,7 +950,7 @@ public class KubernetesHelper {
 		return new File(getMarkDir(), "cache-infos");
 	}
 
-	private static void writeCacheInfos(List<Triple<CacheConfigFacade, Date, Boolean>> cacheInfos) {
+	private static void writeCacheInfos(List<Triple<CacheConfigFacade, Date, Set<String>>> cacheInfos) {
 		try {
 			writeByteArrayToFile(getCacheInfosFile(), serialize((Serializable) cacheInfos));
 		} catch (IOException e) {
@@ -975,7 +958,7 @@ public class KubernetesHelper {
 		}
 	}
 
-	private static List<Triple<CacheConfigFacade, Date, Boolean>> readCacheInfos() {
+	private static List<Triple<CacheConfigFacade, Date, Set<String>>> readCacheInfos() {
 		var file = getCacheInfosFile();
 		if (file.exists()) {
 			try {
@@ -1015,25 +998,23 @@ public class KubernetesHelper {
 
 		var sslFactory = buildSSLFactory(getTrustCertsDir());
 
-		var cacheDirs = new ArrayList<File>();
+		var exactMatchPaths = new HashSet<String>();
 		for (var path: cachePaths) {
 			File cacheDir = getCacheDir(path);
 			FileUtils.createDir(cacheDir);
-			cacheDirs.add(cacheDir);
+			var availability = downloadCache(serverUrl, jobToken, cacheConfig.getKey(),
+					cacheConfig.getChecksum(), path, cacheDir, sslFactory);
+			if (availability == CacheAvailability.EXACT_MATCH)
+				logger.info("Exact matched " + cacheConfig.describe(path));
+			else if (availability == CacheAvailability.PARTIAL_MATCH)
+				logger.info("Partial matched " + cacheConfig.describe(path));
+
+			if (availability == CacheAvailability.EXACT_MATCH)
+				exactMatchPaths.add(path);
 		}
 
 		var cacheInfos = readCacheInfos();
-
-		boolean exactMatch = false;
-		var cacheAvailability = downloadCache(serverUrl, jobToken, cacheConfig.getKey(), 
-				cacheConfig.getChecksum(), cacheConfig.getPathsAsString(), cacheDirs, sslFactory);
-		if (cacheAvailability == CacheAvailability.EXACT_MATCH) {
-			logger.info("Exact matched " + cacheConfig.describe());
-			exactMatch = true;
-		} else if (cacheAvailability == CacheAvailability.PARTIAL_MATCH) {
-			logger.info("Partial matched " + cacheConfig.describe());
-		}
-		cacheInfos.add(new ImmutableTriple<>(cacheConfig, new Date(), exactMatch));
+		cacheInfos.add(new ImmutableTriple<>(cacheConfig, new Date(), exactMatchPaths));
 		writeCacheInfos(cacheInfos);
 	}
 
@@ -1071,7 +1052,7 @@ public class KubernetesHelper {
 			try (Response response = builder.get()){
 				checkStatus(response);
 				try (InputStream is = response.readEntity(InputStream.class)) {
-					untar(is, targetDir, false);
+					TarUtils.untar(is, targetDir, false);
 				} catch (IOException e) {
 					throw new RuntimeException(e);
 				}
@@ -1091,10 +1072,10 @@ public class KubernetesHelper {
         		matcher.appendReplacement(buffer, Matcher.quoteReplacement(placeholderValue));
         	} else if (placeholder.startsWith(WORKDIR + "/")) {
         		throw new ExplicitException("Error replacing placeholder: unable to find file '" 
-        				+ placeholder.substring(WORKDIR.length()+1) + "' in workdir");
+        				+ placeholder.substring(WORKDIR.length() + 1) + "' in workdir");
         	} else if (placeholder.startsWith(ATTRIBUTES + "/")) {
         		throw new ExplicitException("Error replacing placeholder: agent attribute '" 
-        				+ placeholder.substring(ATTRIBUTES.length()+1) + "' does not exist");
+        				+ placeholder.substring(ATTRIBUTES.length() + 1) + "' does not exist");
         	} else if (placeholder.equals(BUILD_VERSION)){ 
         		throw new ExplicitException("Error replacing placeholder: build version not set yet");
         	}
@@ -1152,8 +1133,8 @@ public class KubernetesHelper {
 	}
 
 	public static CacheAvailability downloadCache(String serverUrl, String jobToken, String key,
-										@Nullable String checksum, String cachePathsString,
-										List<File> cacheDirs, @Nullable SSLFactory sslFactory) {
+										@Nullable String checksum, String path,
+										File cacheDir, @Nullable SSLFactory sslFactory) {
 		Client client = KubernetesHelper.buildRestClient(sslFactory);
 		try {
 			var target = client.target(serverUrl)
@@ -1161,14 +1142,14 @@ public class KubernetesHelper {
 					.queryParam("jobToken", jobToken)
 					.queryParam("key", key)
 					.queryParam("checksum", checksum)
-					.queryParam("cachePathsString", cachePathsString);
+					.queryParam("path", path);
 			Invocation.Builder builder =  target.request();
 			try (Response response = builder.get()){
 				checkStatus(response);
 				try (var is = response.readEntity(InputStream.class)) {
 					var cacheAvailability = CacheAvailability.values()[is.read()];
-					if (cacheAvailability != CacheAvailability.NOT_FOUND) 
-						untar(cacheDirs, is);
+					if (cacheAvailability != CacheAvailability.NOT_FOUND)
+						TarUtils.untar(is, cacheDir, false);
 					return cacheAvailability;
 				} catch (IOException e) {
 					throw new RuntimeException(e);
@@ -1180,7 +1161,7 @@ public class KubernetesHelper {
 	}
 
 	public static boolean uploadCache(String serverUrl, String jobToken, CacheConfigFacade cacheConfig,
-									  List<File> cacheDirs, @Nullable SSLFactory sslFactory) {
+									  String path, File cacheDir, @Nullable SSLFactory sslFactory) {
 		var key = cacheConfig.getKey();
 		var checksum = cacheConfig.getChecksum();
 		var projectPath = cacheConfig.getUploadProjectPath();
@@ -1204,11 +1185,11 @@ public class KubernetesHelper {
 			builder = target
 					.queryParam("key", key)
 					.queryParam("checksum", checksum)
-					.queryParam("cachePathsString", cacheConfig.getPathsAsString())
+					.queryParam("path", path)
 					.request();
 			if (accessToken != null)
 				builder.header(AUTHORIZATION, BEARER + " " + accessToken);
-			StreamingOutput output = os -> tar(cacheDirs, os);
+			StreamingOutput output = os -> TarUtils.tar(cacheDir, os, false);
 			try (Response response = builder.post(entity(output, APPLICATION_OCTET_STREAM))) {
 				checkStatus(response);
 				return true;

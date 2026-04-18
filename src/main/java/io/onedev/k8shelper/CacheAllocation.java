@@ -2,28 +2,36 @@ package io.onedev.k8shelper;
 
 import java.io.File;
 import java.util.Date;
-import java.util.List;
+import java.util.Map;
+import java.util.Set;
 
 public class CacheAllocation {
 
     private final CacheConfigFacade config;
 
-    private final List<File> dirs;
+    private final Map<String, File> pathMap;
 
-    private final Date setupDate;
+    private final Set<String> exactMatchPaths;
 
-    public CacheAllocation(CacheConfigFacade config, List<File> dirs, Date setupDate) {
+    private final Date setupDate = new Date();
+
+    public CacheAllocation(CacheConfigFacade config, 
+            Map<String, File> pathMap, Set<String> exactMatchPaths) {
         this.config = config;
-        this.dirs = dirs;
-        this.setupDate = setupDate;
+        this.pathMap = pathMap;
+        this.exactMatchPaths = exactMatchPaths;
     }
 
     public CacheConfigFacade getConfig() {
         return config;
     }
 
-    public List<File> getDirs() {
-        return dirs;
+    public Map<String, File> getPathMap() {
+        return pathMap;
+    }
+
+    public Set<String> getExactMatchPaths() {
+        return exactMatchPaths;
     }
 
     public Date getSetupDate() {

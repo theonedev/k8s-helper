@@ -25,7 +25,7 @@ public class CommandFacade extends LeafFacade {
 
 	private final InterpreterFacade interpreter;
 
-	public CommandFacade(@Nullable String image, @Nullable String runAs, List<RegistryLoginFacade> registryLogins,
+	public CommandFacade(@Nullable String image, String runAs, List<RegistryLoginFacade> registryLogins,
 						 Map<String, String> envMap, boolean useTTY, InterpreterFacade interpreter) {
 		this.image = image;
 		this.runAs = runAs;
@@ -45,7 +45,6 @@ public class CommandFacade extends LeafFacade {
 		return image;
 	}
 
-	@Nullable
 	public String getRunAs() {
 		return runAs;
 	}

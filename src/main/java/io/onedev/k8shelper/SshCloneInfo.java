@@ -53,7 +53,7 @@ public class SshCloneInfo extends CloneInfo {
 		var runtimeKnownHostsFilePath = runtimeResourceDirPath + "/.ssh/" + knownHostsFile.getName();
 
 		var sshCommand = "ssh -i \"" + runtimePrivateKeyFilePath + "\" -o UserKnownHostsFile=\"" + runtimeKnownHostsFilePath + "\" -F /dev/null";
-		git.arguments("config", "core.sshCommand", sshCommand);
+		git.args("-c", "safe.directory=*", "config", "core.sshCommand", sshCommand);
 		git.execute(stdoutLogger, stderrLogger).checkReturnCode();
 
 		return List.of("-c", "core.sshCommand=ssh -i \"" + privateKeyFile.getAbsolutePath() + "\" -o UserKnownHostsFile=\"" + knownHostsFile.getAbsolutePath() + "\" -F /dev/null");

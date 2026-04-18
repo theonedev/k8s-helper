@@ -1,9 +1,10 @@
 package io.onedev.k8shelper;
 
-import org.jspecify.annotations.Nullable;
 import java.io.Serializable;
 import java.util.List;
 import java.util.Map;
+
+import org.jspecify.annotations.Nullable;
 
 public class ServiceFacade implements Serializable {
 
@@ -23,7 +24,7 @@ public class ServiceFacade implements Serializable {
 
 	private final List<RegistryLoginFacade> registryLogins;
 
-	public ServiceFacade(String name, String image, @Nullable String runAs, @Nullable String arguments,
+	public ServiceFacade(String name, String image, String runAs, @Nullable String arguments,
 						 Map<String, String> envs, String readinessCheckCommand,
 						 List<RegistryLoginFacade> registryLogins) {
 		this.name = name;
@@ -43,7 +44,6 @@ public class ServiceFacade implements Serializable {
 		return image;
 	}
 
-	@Nullable
 	public String getRunAs() {
 		return runAs;
 	}

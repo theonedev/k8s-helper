@@ -26,7 +26,7 @@ public class HttpCloneInfo extends CloneInfo {
 		// Use onedev specific authorization header as otherwise it will fail git operations
 		// against other git servers in command step
 		String extraHeader = KubernetesHelper.AUTHORIZATION + ": " + KubernetesHelper.BEARER + " " + accessToken;
-		git.arguments("config", "http.extraHeader", extraHeader);
+		git.args("-c", "safe.directory=*", "config", "http.extraHeader", extraHeader);
 		git.execute(stdoutLogger, stderrLogger).checkReturnCode();
 		return List.of("-c", "http.extraHeader=" + extraHeader);
 	}

@@ -8,7 +8,6 @@ import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.List;
 import java.util.Set;
-import java.util.stream.Collectors;
 
 import org.apache.commons.lang3.tuple.Pair;
 import org.jspecify.annotations.Nullable;
@@ -68,10 +67,6 @@ public class CacheConfigFacade implements Serializable {
         return paths;
     }
 
-    public String getPathsAsString() {
-        return paths.stream().collect(Collectors.joining(","));
-    }
- 
     public UploadStrategy getUploadStrategy() {
         return uploadStrategy;
     }
@@ -120,19 +115,19 @@ public class CacheConfigFacade implements Serializable {
         }
     }
 
-    private String describeKeyAndChecksum() {
+    private String describeKeyAndChecksum(String path) {
         if (checksum != null)
-            return String.format("key: %s, checksum: %s", getKey(), checksum);
+            return String.format("key: %s, checksum: %s, path: %s", getKey(), checksum, path);
         else
-            return String.format("key: %s", getKey());
+            return String.format("key: %s, path: %s", getKey(), path);
     }
 
-    public String describe() {
-        return String.format("cache (%s)", describeKeyAndChecksum());
+    public String describe(String path) {
+        return String.format("cache (%s)", describeKeyAndChecksum(path));
     }
 
-    public String describeUpload() {
-        var keyAndChecksum = describeKeyAndChecksum();
+    public String describeUpload(String path) {
+        var keyAndChecksum = describeKeyAndChecksum(path);
         if (getUploadProjectPath() != null)
             return String.format("cache (project: %s, %s)", getUploadProjectPath(), keyAndChecksum);
         else
