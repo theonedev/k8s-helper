@@ -270,7 +270,7 @@ public class KubernetesHelper {
 				FileUtils.createDir(getWorkDir());
 				var commandsBuilder = new StringBuilder("echo hello from container\n");
 				generateCommandScript(Lists.newArrayList(0), "test",
-						new CommandFacade("any", null, null, new HashMap<>(), true, commandsBuilder.toString()), getWorkDir());
+						new CommandFacade("any", "0:0", null, new HashMap<>(), true, commandsBuilder.toString()), getWorkDir());
 			} else {
 				K8sJobData jobData;
 				Client client = buildRestClient(sslFactory);
@@ -333,7 +333,7 @@ public class KubernetesHelper {
 						var commandsBuilder = new StringBuilder();
 						commandsBuilder.append(command).append("\n");
 
-						commandFacade = new CommandFacade("any", null, null, new HashMap<>(), true, commandsBuilder.toString());
+						commandFacade = new CommandFacade("any", "0:0", null, new HashMap<>(), true, commandsBuilder.toString());
 					}
 
 					generateCommandScript(position, stepPath, commandFacade, workingDir);
@@ -731,7 +731,7 @@ public class KubernetesHelper {
 		
 		if (test) {
 			CommandFacade facade = new CommandFacade(
-					"this does not matter", null, null, new HashMap<>(), false, "this does not matter");
+					"this does not matter", "0:0", null, new HashMap<>(), false, "this does not matter");
 			return facade.execute(commandHandler, Lists.newArrayList(0));
 		} else {
 			var jobData = readJobData();

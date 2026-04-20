@@ -35,7 +35,7 @@ public class CommandFacade extends LeafFacade {
 		this.interpreter = interpreter;
 	}
 
-	public CommandFacade(@Nullable String image, @Nullable String runAs, List<RegistryLoginFacade> registryLogins,
+	public CommandFacade(@Nullable String image, String runAs, List<RegistryLoginFacade> registryLogins,
 		Map<String, String> envMap, boolean useTTY, String commands) {
 		this(image, runAs, registryLogins, envMap, useTTY, new DefaultInterpreterFacade(commands));
 	}
