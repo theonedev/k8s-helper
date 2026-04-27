@@ -240,9 +240,11 @@ public class KubernetesHelper {
 				} catch (IOException e) {
 					throw new RuntimeException(e);
 				}
+				runtimeTrustCertsFilePath = runtimeTrustCertsFilePath.replace("\\", "/");
+				var trustCertsFilePath = trustCertsFile.getAbsolutePath().replace("\\", "/");
 				git.args("-c", "safe.directory=*", "config", "http.sslCAInfo", runtimeTrustCertsFilePath);
 				git.execute(stdoutLogger, stderrLogger).checkReturnCode();
-				return List.of("-c", "http.sslCAInfo=" + trustCertsFile.getAbsolutePath());
+				return List.of("-c", "http.sslCAInfo=\"" + trustCertsFilePath + "\"");
 			}
 		}
 		return List.of();

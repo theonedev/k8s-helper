@@ -51,12 +51,19 @@ public class SshCloneInfo extends CloneInfo {
 		
 		var runtimePrivateKeyFilePath = runtimeResourceDirPath + "/.ssh/" + privateKeyFile.getName();
 		var runtimeKnownHostsFilePath = runtimeResourceDirPath + "/.ssh/" + knownHostsFile.getName();
+		var privateKeyFilePath = privateKeyFile.getAbsolutePath();
+		var knownHostsFilePath = knownHostsFile.getAbsolutePath();
+
+		runtimePrivateKeyFilePath = runtimePrivateKeyFilePath.replace('\\', '/');
+		runtimeKnownHostsFilePath = runtimeKnownHostsFilePath.replace('\\', '/'); 
+		privateKeyFilePath = privateKeyFilePath.replace('\\', '/');
+		knownHostsFilePath = knownHostsFilePath.replace('\\', '/');
 
 		var sshCommand = "ssh -i \"" + runtimePrivateKeyFilePath + "\" -o UserKnownHostsFile=\"" + runtimeKnownHostsFilePath + "\" -F /dev/null";
 		git.args("-c", "safe.directory=*", "config", "core.sshCommand", sshCommand);
 		git.execute(stdoutLogger, stderrLogger).checkReturnCode();
 
-		return List.of("-c", "core.sshCommand=ssh -i \"" + privateKeyFile.getAbsolutePath() + "\" -o UserKnownHostsFile=\"" + knownHostsFile.getAbsolutePath() + "\" -F /dev/null");
+		return List.of("-c", "core.sshCommand=ssh -i \"" + privateKeyFilePath + "\" -o UserKnownHostsFile=\"" + knownHostsFilePath + "\" -F /dev/null");
 	}
 
 	@Override
