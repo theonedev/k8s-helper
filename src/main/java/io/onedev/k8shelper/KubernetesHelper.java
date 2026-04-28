@@ -219,9 +219,17 @@ public class KubernetesHelper {
 		};
 	}
 
-	public static List<String> setupGitCerts(Commandline git, File trustCertsDir, File trustCertsFile,
+	/**
+	 * This method does two things:
+	 * 1. Set up git config file to trust the certificates. This way git operations inside 
+	 * command build step or workspace can trust certificates without using extra options
+	 * 2. Set up git command line to add arguments to trust certificates for git operations 
+	 * preparing git repository to be used by command build step or workspace
+	 */
+	public static void setupGitCerts(Commandline git, File trustCertsDir, File trustCertsFile,
 									  String runtimeTrustCertsFilePath, LineConsumer stdoutLogger, 
 									  LineConsumer stderrLogger) {
+		var presetArgs = new ArrayList<String>(git.args());
 		if (trustCertsDir.exists()) {
 			List<String> certLines = new ArrayList<>();
 			for (var file: trustCertsDir.listFiles()) {
@@ -244,10 +252,10 @@ public class KubernetesHelper {
 				var trustCertsFilePath = trustCertsFile.getAbsolutePath().replace("\\", "/");
 				git.args("-c", "safe.directory=*", "config", "http.sslCAInfo", runtimeTrustCertsFilePath);
 				git.execute(stdoutLogger, stderrLogger).checkReturnCode();
-				return List.of("-c", "http.sslCAInfo=\"" + trustCertsFilePath + "\"");
+				git.args(presetArgs);
+				git.addArgs("-c", "http.sslCAInfo=\"" + trustCertsFilePath + "\"");
 			}
 		}
-		return List.of();
 	}
 	
 	public static void init(String serverUrl, String jobToken, boolean test) {
@@ -434,6 +442,7 @@ public class KubernetesHelper {
 			});
 		}
 		result.checkReturnCode();
+		git.clearArgs();
 	}
 
 	/**
@@ -444,6 +453,7 @@ public class KubernetesHelper {
 	public static void cloneRepository(Commandline git, String cloneUrl, String remoteUrl, 
 				String refName, @Nullable String commitHash, boolean withLfs, boolean withSubmodules, 
 				int cloneDepth, LineConsumer stdoutLogger, LineConsumer stderrLogger) {
+		var presetArgs = new ArrayList<>(git.args());
 
 		String configContent;
 		try {
@@ -452,8 +462,6 @@ public class KubernetesHelper {
 		} catch (IOException e) {
 			throw new RuntimeException(e);
 		}
-
-		var presetArgs = new ArrayList<>(git.args());
 
 		git.addArgs("-c", "safe.directory=*", "fetch", cloneUrl, "--force", "--quiet"); 
 		if (cloneDepth != 0)
@@ -554,6 +562,7 @@ public class KubernetesHelper {
 			git.addArgs("-c", "safe.directory=*", "branch", "--set-upstream-to=origin/" + branch, branch);
 			git.execute(stdoutLogger, stderrLogger).checkReturnCode();
 		}
+		git.args(presetArgs);
 	}
 
 	private static void writeConfigToSubmodules(File modulesDir, String configContent) {
@@ -835,18 +844,14 @@ public class KubernetesHelper {
 		}
 
 		initRepository(git, infoLogger, errorLogger);
-
-		var remoteAccessArgs = new ArrayList<String>();
 		
+		git.clearArgs();
 		File trustCertsFile = new File(getBuildDir(), "trust-certs.pem");
-		remoteAccessArgs.addAll(setupGitCerts(git, getTrustCertsDir(), trustCertsFile,
-				trustCertsFile.getAbsolutePath(), infoLogger, errorLogger));
+		setupGitCerts(git, getTrustCertsDir(), trustCertsFile,
+				trustCertsFile.getAbsolutePath(), infoLogger, errorLogger);
 
 		var buildDir = getBuildDir();
-		remoteAccessArgs.addAll(cloneInfo.setupGitAuth(git, buildDir, buildDir.getAbsolutePath(), 
-				infoLogger, errorLogger));
-
-		git.args(remoteAccessArgs);
+		cloneInfo.setupGitAuth(git, buildDir, buildDir.getAbsolutePath(), infoLogger, errorLogger);
 
 		cloneRepository(git, cloneInfo.getCloneUrl(), cloneInfo.getCloneUrl(), 
 				jobData.getRefName(), jobData.getCommitHash(), withLfs, withSubmodules, cloneDepth, 

@@ -75,6 +75,9 @@ public class BuildImageFacade extends LeafFacade {
 
 	public interface Output extends Serializable {
 
+		/**
+		 * Implementation of this method should add arguments to provided docker command to do the job
+		 */
 		void execute(Commandline docker, File hostBuildDir, LineConsumer infoLogger, LineConsumer errorLogger);
 
 	}

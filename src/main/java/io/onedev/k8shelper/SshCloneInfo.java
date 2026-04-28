@@ -2,8 +2,8 @@ package io.onedev.k8shelper;
 
 import java.io.File;
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
 import java.util.Base64;
-import java.util.List;
 
 import org.apache.commons.lang3.SystemUtils;
 
@@ -27,8 +27,10 @@ public class SshCloneInfo extends CloneInfo {
 	}
 
 	@Override
-	public List<String> setupGitAuth(Commandline git, File resourceDir, String runtimeResourceDirPath,
+	public void setupGitAuth(Commandline git, File resourceDir, String runtimeResourceDirPath,
 							  LineConsumer stdoutLogger, LineConsumer stderrLogger) {
+		var presetArgs = new ArrayList<String>(git.args());
+
 		File sshDir = new File(resourceDir, ".ssh");
 		FileUtils.createDir(sshDir);
 		
@@ -63,7 +65,8 @@ public class SshCloneInfo extends CloneInfo {
 		git.args("-c", "safe.directory=*", "config", "core.sshCommand", sshCommand);
 		git.execute(stdoutLogger, stderrLogger).checkReturnCode();
 
-		return List.of("-c", "core.sshCommand=ssh -i \"" + privateKeyFilePath + "\" -o UserKnownHostsFile=\"" + knownHostsFilePath + "\" -F /dev/null");
+		git.args(presetArgs);
+		git.addArgs("-c", "core.sshCommand=ssh -i \"" + privateKeyFilePath + "\" -o UserKnownHostsFile=\"" + knownHostsFilePath + "\" -F /dev/null");
 	}
 
 	@Override

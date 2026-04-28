@@ -26,7 +26,14 @@ public abstract class CloneInfo implements Serializable {
 		return cloneUrl;
 	}
 	
-	public abstract List<String> setupGitAuth(Commandline git, File resourceDir, String runtimeResourceDirPath,
+	/**
+	 * This method does two things:
+	 * 1. Set up git config file for OneDev server authentication. This way git operations inside 
+	 * command build step or workspace can authenticate to OneDev server without using extra options
+	 * 2. Set up git command line to add arguments to authenticate to OneDev server for git operations 
+	 * preparing git repository to be used by command build step or workspace
+	 */
+	public abstract void setupGitAuth(Commandline git, File resourceDir, String runtimeResourceDirPath,
 									   LineConsumer stdoutLogger, LineConsumer stderrLogger);
 	
 	public static CloneInfo fromString(String string) {
