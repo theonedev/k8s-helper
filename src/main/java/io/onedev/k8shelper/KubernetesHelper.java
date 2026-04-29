@@ -253,7 +253,7 @@ public class KubernetesHelper {
 				git.args("-c", "safe.directory=*", "config", "http.sslCAInfo", runtimeTrustCertsFilePath);
 				git.execute(stdoutLogger, stderrLogger).checkReturnCode();
 				git.args(presetArgs);
-				git.addArgs("-c", "http.sslCAInfo=\"" + trustCertsFilePath + "\"");
+				git.addArgs("-c", "http.sslCAInfo=" + trustCertsFilePath);
 			}
 		}
 	}
