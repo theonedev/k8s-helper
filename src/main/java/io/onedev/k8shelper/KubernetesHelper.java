@@ -463,7 +463,7 @@ public class KubernetesHelper {
 			throw new RuntimeException(e);
 		}
 
-		git.addArgs("-c", "safe.directory=*", "fetch", cloneUrl, "--force", "--quiet"); 
+		git.addArgs("-c", "safe.directory=*", "fetch", cloneUrl, "--force", "--progress", "--quiet"); 
 		if (cloneDepth != 0)
 			git.addArgs("--depth=" + cloneDepth);
 		git.addArgs(commitHash != null ? commitHash : refName);
@@ -477,7 +477,7 @@ public class KubernetesHelper {
 		var fetched = commitHash != null ? commitHash : "FETCH_HEAD";
 
 		git.args(presetArgs);
-		git.addArgs("-c", "safe.directory=*", "checkout", "--quiet", fetched);
+		git.addArgs("-c", "safe.directory=*", "checkout", "--progress", "--quiet", fetched);
 		git.execute(stdoutLogger, new LineConsumer() {
 
 			@Override
