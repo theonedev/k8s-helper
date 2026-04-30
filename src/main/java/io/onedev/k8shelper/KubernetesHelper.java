@@ -647,9 +647,9 @@ public class KubernetesHelper {
 		}
 	}
 
-	public static void changeOwner(File dir, String owner) {
+	public static void changeOwner(File dirOrFile, String owner) {
 		var chown = new Commandline("chown");
-		chown.addArgs("-R", owner, dir.getAbsolutePath());
+		chown.addArgs("-R", owner, dirOrFile.getAbsolutePath());
 		chown.execute(new LineConsumer() {
 			@Override
 			public void consume(String line) {
