@@ -3,10 +3,13 @@ package io.onedev.k8shelper;
 import static io.onedev.k8shelper.UploadStrategy.UPLOAD_IF_NOT_EXACT_MATCH;
 
 import java.io.File;
-import java.util.ArrayList;
+import java.io.Serializable;
+import java.util.Date;
 import java.util.HashMap;
 import java.util.HashSet;
-import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.function.Function;
 
 import org.apache.commons.io.FilenameUtils;
 import org.jspecify.annotations.Nullable;
@@ -14,88 +17,116 @@ import org.jspecify.annotations.Nullable;
 import io.onedev.commons.utils.ExplicitException;
 import io.onedev.commons.utils.FileUtils;
 import io.onedev.commons.utils.TaskLogger;
+import io.onedev.commons.utils.command.Commandline;
 
-public abstract class CacheProvisioner {
+public abstract class CacheProvisioner implements Serializable {
 
-    private final File baseDir;
+    private static final long serialVersionUID = 1L;
 
-    private final TaskLogger logger;
+    private final CacheConfigFacade config;
 
-    private final List<CacheAllocation> allocations = new ArrayList<>();
+    private final String CACHE_DIR_PREFIX = "cache-";
 
-    private int cacheIndex = 1;
+    private final Map<String, Integer> absolutePathIndexes;
 
-    public CacheProvisioner(File baseDir, TaskLogger logger) {
-        this.baseDir = baseDir;
-        this.logger = logger;
+    private final Set<String> exactMatchPaths = new HashSet<>();
+
+    private final int configIndex;
+
+    private Date provisionDate;
+
+    public CacheProvisioner(CacheConfigFacade config, int configIndex) {
+        this.config = config;
+        this.configIndex = configIndex;
+        absolutePathIndexes = new HashMap<>();
+        var absolutePathIndex = 1;
+        for (var path : config.getPaths()) {
+            if (FilenameUtils.getPrefixLength(path) > 0)
+                absolutePathIndexes.put(path, absolutePathIndex++);
+        }
     }
 
-    public void setupCache(CacheConfigFacade cacheConfig) {
-        var pathMap = new HashMap<String, File>();
-        for (var path: cacheConfig.getPaths()) {
-            if (path.contains(".."))
-                throw new ExplicitException("Cache path does not allow to contain '..': " + path);
-
-            File cacheDir;
-            if (FilenameUtils.getPrefixLength(path) > 0) {
-                cacheDir = new File(baseDir, "cache/" + (cacheIndex++));
-            } else {
-                cacheDir = new File(new File(baseDir, "work"), path);
-            }
-            FileUtils.createDir(cacheDir);
-            pathMap.put(path, cacheDir);
-        }
-
-        cacheConfig.replacePlaceholders(baseDir);
-        cacheConfig.computeChecksum(new File(baseDir, "work"), logger);
-
-        var exactMatchPaths = new HashSet<String>();
-        for (var entry: pathMap.entrySet()) {
-            var availability = downloadCache(cacheConfig.getKey(), cacheConfig.getChecksum(),
-                    entry.getKey(), entry.getValue());
-            if (availability == CacheAvailability.EXACT_MATCH)
-                logger.log("Exact matched " + cacheConfig.describe(entry.getKey()));
-            else if (availability == CacheAvailability.PARTIAL_MATCH)
-                logger.log("Partial matched " + cacheConfig.describe(entry.getKey()));
-
-            if (availability == CacheAvailability.EXACT_MATCH)
-                exactMatchPaths.add(entry.getKey());
-        }
-        allocations.add(new CacheAllocation(cacheConfig, pathMap, exactMatchPaths));
+    private String getCacheDirName() {
+        return CACHE_DIR_PREFIX + configIndex;
     }
 
-    private void uploadCacheThenLog(CacheConfigFacade cacheConfig, String path, File cacheDir) {
-        if (uploadCache(cacheConfig, path, cacheDir))
-            logger.log(String.format("Uploaded %s", cacheConfig.describeUpload(path), path));
+    public CacheConfigFacade getConfig() {
+        return config;
+    }
+
+    public Map<String, Integer> getAbsolutePathIndexes() {
+        return absolutePathIndexes;
+    }
+
+    public String getSubPath(int absolutePathIndex) {
+        return getCacheDirName() + "/" + absolutePathIndex;
+    }
+
+    public File getPathDir(File baseDir, String path) {
+        File pathDir;
+        var pathIndex = absolutePathIndexes.get(path);
+        if (pathIndex != null)
+            pathDir = new File(baseDir, getCacheDirName() + "/" + pathIndex);
+        else if (!path.contains(".."))
+            pathDir = new File(baseDir, "work/" + path);
         else
-            logger.warning(String.format("Not authorized to upload %s", cacheConfig.describeUpload(path)));
+            throw new ExplicitException("Cache path does not allow to contain '..': " + path);
+        return pathDir;
     }
 
-    public void uploadCaches() {
-        for (var allocation : allocations) {
-            var cacheConfig = allocation.getConfig();
-            var pathMap = allocation.getPathMap();
-            for (var entry: pathMap.entrySet()) {
-                if (cacheConfig.getUploadStrategy() == UPLOAD_IF_NOT_EXACT_MATCH) {
-                    if (!allocation.getExactMatchPaths().contains(entry.getKey())) 
-                        uploadCacheThenLog(cacheConfig, entry.getKey(), entry.getValue());
-                } else {
-                    if (FileUtils.hasChangedFiles(entry.getValue(), allocation.getSetupDate(), cacheConfig.getChangeDetectionExcludes())) {
-                        logger.log("Changes detected in " + cacheConfig.describe(entry.getKey()));
-                        uploadCacheThenLog(cacheConfig, entry.getKey(), entry.getValue());
-                    }   
-                }                 
+    public void download(File baseDir, TaskLogger logger) {
+        config.replacePlaceholders(baseDir);
+        config.computeChecksum(new File(baseDir, "work"), logger);
+
+        for (var path: config.getPaths()) {
+            var pathDir = getPathDir(baseDir, path);
+            FileUtils.createDir(pathDir);
+            var availability = download(config.getKey(), config.getChecksum(), path, pathDir);
+            if (availability == CacheAvailability.EXACT_MATCH)
+                logger.log("Exact matched " + config.describe(path));
+            else if (availability == CacheAvailability.PARTIAL_MATCH)
+                logger.log("Partial matched " + config.describe(path));
+
+            if (availability == CacheAvailability.EXACT_MATCH)
+                exactMatchPaths.add(path);
+        }
+        provisionDate = new Date();
+    }
+
+    private void uploadThenLog(String path, File pathDir, TaskLogger logger) {
+        if (upload(config, path, pathDir))
+            logger.log(String.format("Uploaded %s", config.describeUpload(path)));
+        else
+            logger.warning(String.format("Not authorized to upload %s", config.describeUpload(path)));
+    }
+
+    public void upload(File baseDir, TaskLogger logger) {
+        for (var path: config.getPaths()) {
+            var pathDir = getPathDir(baseDir, path);
+            if (config.getUploadStrategy() == UPLOAD_IF_NOT_EXACT_MATCH) {
+                if (!exactMatchPaths.contains(path)) 
+                    uploadThenLog(path, pathDir, logger);
+            } else {
+                if (provisionDate == null || FileUtils.hasChangedFiles(pathDir, provisionDate, config.getChangeDetectionExcludes())) {
+                    logger.log("Changes detected in " + config.describe(path));
+                    uploadThenLog(path, pathDir, logger);
+                }   
+            }                 
+        }
+    }
+
+    public void mountVolumes(Commandline docker, File workspaceDir, Function<String, String> hostPathResolver) {
+        for (var path: config.getPaths()) {
+            if (FilenameUtils.getPrefixLength(path) > 0) {
+                var pathDir = getPathDir(workspaceDir, path);
+                docker.addArgs("-v", hostPathResolver.apply(pathDir.getAbsolutePath()) + ":" + path);
             }
         }
     }
 
-    public List<CacheAllocation> getAllocations() {
-        return allocations;
-    }
+    protected abstract CacheAvailability download(String key, @Nullable String checksum,
+            String path, File pathDir);
 
-    protected abstract CacheAvailability downloadCache(String key, @Nullable String checksum,
-            String path, File cacheDir);
-
-    protected abstract boolean uploadCache(CacheConfigFacade cacheConfig, String path, File cacheDir);
+    protected abstract boolean upload(CacheConfigFacade config, String path, File pathDir);
 
 }

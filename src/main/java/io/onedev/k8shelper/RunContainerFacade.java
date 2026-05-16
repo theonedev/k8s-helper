@@ -27,7 +27,7 @@ public class RunContainerFacade extends LeafFacade {
 
 	private final boolean useTTY;
 
-	public RunContainerFacade(String image, @Nullable String runAs, @Nullable String args,
+	public RunContainerFacade(String image, String runAs, @Nullable String args,
 							  Map<String, String> envMap, @Nullable String workingDir,
 							  Map<String, String> volumeMounts, List<RegistryLoginFacade> registryLogins,
 							  boolean useTTY) {
@@ -45,7 +45,6 @@ public class RunContainerFacade extends LeafFacade {
 		return image;
 	}
 
-	@Nullable
 	public String getRunAs() {
 		return runAs;
 	}

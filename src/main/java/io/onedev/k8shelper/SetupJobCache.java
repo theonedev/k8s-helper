@@ -1,5 +1,7 @@
 package io.onedev.k8shelper;
 
+import static io.onedev.k8shelper.KubernetesHelper.LOG_END_MESSAGE;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -7,9 +9,9 @@ import com.google.common.base.Preconditions;
 
 import io.onedev.commons.utils.TaskLogger;
 
-public class SetupCache {
+public class SetupJobCache {
 
-	private static final Logger logger = LoggerFactory.getLogger(SetupCache.class);
+	private static final Logger logger = LoggerFactory.getLogger(SetupJobCache.class);
 	
 	public static void main(String[] args) {
 		int exitCode = 0;
@@ -17,15 +19,15 @@ public class SetupCache {
 			String serverUrl = System.getenv(KubernetesHelper.ENV_SERVER_URL);
 			if (serverUrl == null)
 				throw new RuntimeException("Environment '" + KubernetesHelper.ENV_SERVER_URL + "' is not defined");
-			String jobToken = Preconditions.checkNotNull(System.getenv(KubernetesHelper.ENV_JOB_TOKEN));
+			String jobToken = Preconditions.checkNotNull(System.getenv(JobHelper.ENV_JOB_TOKEN));
 			if (jobToken == null)
-				throw new RuntimeException("Environment '" + KubernetesHelper.ENV_JOB_TOKEN + "' is not defined");
-			KubernetesHelper.setupCache(serverUrl, jobToken, args[0]);
+				throw new RuntimeException("Environment '" + JobHelper.ENV_JOB_TOKEN + "' is not defined");
+			JobHelper.setupCache(serverUrl, jobToken, args[0]);
 		} catch (Exception e) {
 			logger.error(TaskLogger.wrapWithAnsiError(TaskLogger.toString(null, e)));
 			exitCode = 1;
 		} finally {
-			logger.info(KubernetesHelper.LOG_END_MESSAGE);
+			logger.info(LOG_END_MESSAGE);
 			System.exit(exitCode);
 		}
 	}

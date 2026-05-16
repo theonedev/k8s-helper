@@ -1,5 +1,7 @@
 package io.onedev.k8shelper;
 
+import static io.onedev.k8shelper.KubernetesHelper.LOG_END_MESSAGE;
+
 import java.nio.charset.StandardCharsets;
 import java.util.Base64;
 
@@ -18,21 +20,21 @@ public class CheckoutCode {
 			String serverUrl = System.getenv(KubernetesHelper.ENV_SERVER_URL);
 			if (serverUrl == null)
 				throw new RuntimeException("Environment '" + KubernetesHelper.ENV_SERVER_URL + "' is not defined");
-			String jobToken = Preconditions.checkNotNull(System.getenv(KubernetesHelper.ENV_JOB_TOKEN));
+			String jobToken = Preconditions.checkNotNull(System.getenv(JobHelper.ENV_JOB_TOKEN));
 			if (jobToken == null)
-				throw new RuntimeException("Environment '" + KubernetesHelper.ENV_JOB_TOKEN + "' is not defined");
+				throw new RuntimeException("Environment '" + JobHelper.ENV_JOB_TOKEN + "' is not defined");
 
 			String checkoutPath = null;
 			if (args.length >= 6) 
 				checkoutPath = new String(Base64.getDecoder().decode(args[5]), StandardCharsets.UTF_8);
-			KubernetesHelper.checkoutCode(serverUrl, jobToken, args[0], Boolean.parseBoolean(args[1]), 
+			JobHelper.checkoutCode(serverUrl, jobToken, args[0], Boolean.parseBoolean(args[1]), 
 					Boolean.parseBoolean(args[2]), Integer.parseInt(args[3]), CloneInfo.fromString(args[4]), 
 					checkoutPath);
 		} catch (Exception e) {
 			logger.error("Error executing step", e);
 			exitCode = 1;
 		} finally {
-			logger.info(KubernetesHelper.LOG_END_MESSAGE);
+			logger.info(LOG_END_MESSAGE);
 			System.exit(exitCode);
 		}
 	}
