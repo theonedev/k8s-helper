@@ -1,7 +1,6 @@
 package io.onedev.k8shelper;
 
 import static com.google.common.base.Preconditions.checkNotNull;
-import static io.onedev.k8shelper.KubernetesHelper.LOG_END_MESSAGE;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -16,11 +15,9 @@ public class WorkspaceInit {
 			String workspaceToken = checkNotNull(System.getenv(WorkspaceHelper.ENV_WORKSPACE_TOKEN));
 			String runAs = checkNotNull(System.getenv(WorkspaceHelper.ENV_RUNAS));
 			WorkspaceHelper.init(serverUrl, workspaceToken, runAs);
-			logger.info(LOG_END_MESSAGE);
 			System.exit(0);
 		} catch (Throwable e) {
 			KubernetesHelper.logFailure(logger, e);
-			logger.info(LOG_END_MESSAGE);
 			System.exit(1);
 		}
 	}

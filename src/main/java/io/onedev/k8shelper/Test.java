@@ -1,7 +1,6 @@
 package io.onedev.k8shelper;
 
 import static com.google.common.base.Preconditions.checkNotNull;
-import static io.onedev.k8shelper.KubernetesHelper.LOG_END_MESSAGE;
 import static io.onedev.k8shelper.KubernetesHelper.buildRestClient;
 import static io.onedev.k8shelper.KubernetesHelper.buildSSLFactory;
 import static io.onedev.k8shelper.KubernetesHelper.checkStatus;
@@ -35,11 +34,9 @@ public class Test {
 	public static void main(String[] args) {
 		try {
 			run();
-			logger.info(LOG_END_MESSAGE);
 			System.exit(0);
 		} catch (Throwable e) {
 			KubernetesHelper.logFailure(logger, e);
-			logger.info(LOG_END_MESSAGE);
 			System.exit(1);
 		}
 	}

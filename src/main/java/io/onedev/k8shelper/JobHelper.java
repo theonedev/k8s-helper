@@ -39,6 +39,7 @@ import java.util.Collection;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import javax.ws.rs.client.Client;
 import javax.ws.rs.client.Entity;
@@ -497,13 +498,26 @@ public class JobHelper {
 		}
 	}
 
+	private static int getCacheConfigIndex(CompositeFacade entryFacade, List<Integer> position) {
+		var index = new AtomicInteger(1);
+		var cacheConfigIndex = entryFacade.traverse((facade, eachPosition) -> {
+			if (facade instanceof SetupCacheFacade) {
+				int currentIndex = index.getAndIncrement();
+				if (eachPosition.equals(position))
+					return currentIndex;
+			}
+			return null;
+		}, new ArrayList<>());
+		return Preconditions.checkNotNull(cacheConfigIndex);
+	}
+
 	static void setupCache(String serverUrl, String jobToken, String positionStr) {
 		var position = parseStepPosition(positionStr);
-		var cacheConfig = ((SetupCacheFacade) new CompositeFacade(readJobData().getActions())
-				.getFacade(position)).getCacheConfig();
+		var entryFacade = new CompositeFacade(readJobData().getActions());
+		var cacheConfig = ((SetupCacheFacade) entryFacade.getFacade(position)).getCacheConfig();
 		var cacheProvisioners = readCacheProvisioners();
 		var cacheProvisioner = newCacheProvisioner(serverUrl, "~api/k8s/job-cache", 
-				jobToken, cacheConfig, getTrustCertsDir(), cacheProvisioners.size() + 1);
+				jobToken, cacheConfig, getTrustCertsDir(), getCacheConfigIndex(entryFacade, position));
 		cacheProvisioner.download(getBuildDir(), new TaskLogger() {
 
 			@Override
