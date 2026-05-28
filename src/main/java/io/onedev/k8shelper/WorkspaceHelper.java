@@ -69,6 +69,8 @@ public class WorkspaceHelper {
 
 	public static final String INIT_INFO_FILE = ".init-info";
 
+	public static final String ENV_TERM = "TERM";
+
 	private static final Logger logger = LoggerFactory.getLogger(WorkspaceHelper.class);
 
 	private static File getWorkspaceDir() {
@@ -81,14 +83,14 @@ public class WorkspaceHelper {
 
 	public static File getTrustCertsDir() {
 		return new File(getWorkspaceDir(), "trust-certs");
-	}
+	} 
 
 	public static Map<String, String> buildEnvVars(
 			Map<String, String> customEnvVars, String serverUrl, String accessToken, String workDir) {
 		var envVars = new HashMap<String, String>();
 		if (customEnvVars != null)
 			envVars.putAll(customEnvVars);
-		envVars.put("TERM", "xterm-256color");
+		envVars.put(ENV_TERM, "xterm-256color");
 		envVars.put("LANG", "C.UTF-8");
 		envVars.put(KubernetesHelper.ENV_SERVER_URL, serverUrl);
 		envVars.put(ENV_ACCESS_TOKEN, accessToken);
@@ -153,6 +155,7 @@ public class WorkspaceHelper {
 
 	public static void init(String serverUrl, String workspaceToken, String runAs) {
 		FileUtils.createDir(getWorkDir());
+		FileUtils.deleteFile(getShutdownFile());
 
 		SSLFactory sslFactory = buildSSLFactory(getTrustCertsDir());
 
@@ -185,8 +188,12 @@ public class WorkspaceHelper {
 		logger.info("Workspace initialized");
 	}
 
+	private static File getShutdownFile() {
+		return new File(getWorkspaceDir(), SHUTDOWN_FILE);
+	}
+
 	public static void sidecar(String serverUrl, String workspaceToken) {
-		File shutdownFile = new File(getWorkspaceDir(), SHUTDOWN_FILE);
+		File shutdownFile = getShutdownFile();
 		while (!shutdownFile.exists()) {
 			try {
 				Thread.sleep(1000);
