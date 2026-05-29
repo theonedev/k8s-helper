@@ -236,7 +236,7 @@ public class JobHelper {
 				var commandsBuilder = new StringBuilder();
 				commandsBuilder.append(command).append("\n");
 
-				commandFacade = new CommandFacade("any", "0:0", null, new HashMap<>(), true, commandsBuilder.toString());
+				commandFacade = new CommandFacade("any", "0:0", new ArrayList<>(), new HashMap<>(), true, commandsBuilder.toString());
 			}
 
 			generateCommandScript(position, stepPath, commandFacade, workingDir);

@@ -22,6 +22,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.function.Function;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -74,6 +75,8 @@ public class KubernetesHelper {
 	public static final String PLACEHOLDER_SUFFIX = "#onedev&>";
 
 	private static final Pattern PLACEHOLDER_PATTERN = Pattern.compile(PLACEHOLDER_PREFIX + "(.*?)" + PLACEHOLDER_SUFFIX);
+
+	private static final String ESCAPED_CR = "#![<CR>]!#";
 
 	public static final String WORKDIR = "work";
 
@@ -603,23 +606,35 @@ public class KubernetesHelper {
 		}
 	}
 
-	public static LineConsumer newInfoLogger() {
+	public static String escapeStartCR(String line, Function<String, String> messageTransformer) {
+		if (line.startsWith("\r"))
+			line = ESCAPED_CR + messageTransformer.apply(line.substring(1));
+		return line;
+	}
+
+	public static String unescapeStartCR(String line) {
+		if (line.startsWith(ESCAPED_CR))
+			line = "\r" + line.substring(ESCAPED_CR.length());
+		return line;
+	}
+
+	static LineConsumer newInfoLogger() {
 		return new LineConsumer() {
 
 			@Override
 			public void consume(String line) {
-				logger.info(line);
+				System.out.println(escapeStartCR(line, Function.identity()));
 			}
 
 		};
 	}
 
-	public static LineConsumer newErrorLogger() {
+	static LineConsumer newErrorLogger() {
 		return new LineConsumer() {
 
 			@Override
 			public void consume(String line) {
-				logger.error(line);
+				System.out.println(escapeStartCR(line, TaskLogger::wrapWithAnsiWarning));
 			}
 
 		};

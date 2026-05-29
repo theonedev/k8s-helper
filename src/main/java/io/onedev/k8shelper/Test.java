@@ -17,6 +17,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import io.onedev.commons.utils.FileUtils;
+import io.onedev.commons.utils.TaskLogger;
 import nl.altindag.ssl.SSLFactory;
 
 public class Test {
@@ -34,6 +35,10 @@ public class Test {
 	public static void main(String[] args) {
 		try {
 			run();
+			logger.info("This is a information message");
+			logger.error("This is a error message");
+			System.out.println(TaskLogger.wrapWithAnsiSuccess("This is a system out message"));
+			System.out.println(TaskLogger.wrapWithAnsiError("This is a system out message"));
 			System.exit(0);
 		} catch (Throwable e) {
 			KubernetesHelper.logFailure(logger, e);
