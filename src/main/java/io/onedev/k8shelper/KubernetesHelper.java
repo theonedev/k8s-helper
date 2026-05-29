@@ -207,7 +207,7 @@ public class KubernetesHelper {
 			throw new RuntimeException(e);
 		}
 
-		git.addArgs("-c", "safe.directory=*", "fetch", cloneUrl, "--force", "--progress", "--quiet");
+		git.addArgs("-c", "safe.directory=*", "fetch", cloneUrl, "--force", "--progress");
 		if (cloneDepth != 0)
 			git.addArgs("--depth=" + cloneDepth);
 		git.addArgs(commitHash != null ? commitHash : refName);
