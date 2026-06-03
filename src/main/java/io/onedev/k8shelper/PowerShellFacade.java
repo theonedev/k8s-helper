@@ -18,7 +18,7 @@ public class PowerShellFacade extends InterpreterFacade {
 
 	@Override
 	protected String getPauseInvokeCommand() {
-		return "cmd /c $env:ONEDEV_WORKDIR%\\..\\pause.bat";
+		return "& \"$env:ONEDEV_WORKDIR\\..\\pause.bat\"";
 	}
 
 }

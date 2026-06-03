@@ -18,7 +18,7 @@ public class DefaultInterpreterFacade extends InterpreterFacade {
 	@Override
 	protected String getPauseInvokeCommand() {
 		if (SystemUtils.IS_OS_WINDOWS)
-			return "cmd /c %ONEDEV_WORKDIR%\\..\\pause.bat";
+			return "cmd /c \"%ONEDEV_WORKDIR%\\..\\pause.bat\"";
 		else
 			return "sh $ONEDEV_WORKDIR/../pause.sh";
 	}
