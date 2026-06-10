@@ -161,7 +161,12 @@ public class WorkspaceHelper {
 
 		KubernetesWorkspaceData workspaceData = downloadWorkspaceData(serverUrl, workspaceToken, sslFactory);
 
-		setupRepository(workspaceData);
+		var cloneInfo = workspaceData.getCloneInfo();
+		var cloneUrl = cloneInfo.getCloneUrl();
+		setupRepository(getWorkspaceDir(), new Commandline("git"), 
+				workspaceData.getUserName(), workspaceData.getUserEmail(), cloneInfo, workspaceData.getCommitHash(), 
+				workspaceData.getBranch(), workspaceData.isRetrieveLfs(), getTrustCertsDir(), 
+				WORKSPACE_PATH, cloneUrl, newInfoLogger(), newErrorLogger());
 
 		new ConfigFileProvisioner(workspaceData.getConfigFiles()).provision(getWorkspaceDir(), newInfoTaskLogger());
 
@@ -233,17 +238,9 @@ public class WorkspaceHelper {
 		}
 	}
 
-	private static void setupRepository(KubernetesWorkspaceData data) {
-		var cloneInfo = data.getCloneInfo();
-		var cloneUrl = cloneInfo.getCloneUrl();
-		setupRepository(getWorkspaceDir(), new Commandline("git"), data.getUserName(),
-				data.getUserEmail(), cloneInfo, data.getRefName(), data.isRetrieveLfs(),
-				getTrustCertsDir(), WORKSPACE_PATH, cloneUrl, newInfoLogger(), newErrorLogger());
-	}
-
 	public static void setupRepository(File workspaceDir, Commandline git, String userName,
-			String userEmail, CloneInfo cloneInfo, @Nullable String refName, boolean retrieveLfs,
-			File trustCertsDir, String runtimeWorkspaceDirPath, String fetchUrl,
+			String userEmail, CloneInfo cloneInfo, String commitHash, @Nullable String branch, 
+			boolean retrieveLfs, File trustCertsDir, String runtimeWorkspaceDirPath, String fetchUrl,
 			LineConsumer infoLogger, LineConsumer warningLogger) {
 		infoLogger.consume("Initializing workspace git repository...");
 
@@ -266,7 +263,7 @@ public class WorkspaceHelper {
 
 			@Override
 			public void consume(String line) {
-				if (line.startsWith("No commits yet") || line.startsWith("nothing to commit")) {
+				if (line.startsWith("No commits yet")) {
 					noCommits.set(true);
 				} else if (!line.startsWith("On branch") && line.trim().length() != 0) {
 					infoLogger.consume(line);
@@ -285,19 +282,9 @@ public class WorkspaceHelper {
 
 		var remoteUrl = cloneInfo.getCloneUrl();
 		if (noCommits.get()) {
-			if (refName != null) {
-				infoLogger.consume("Cloning repository...");
-				cloneRepository(git, fetchUrl, remoteUrl, refName, null,
-						retrieveLfs, false, 0, infoLogger, warningLogger);
-			} else {
-				setupOriginUrl(git, remoteUrl, infoLogger, warningLogger);
-
-				git.args("-c", "safe.directory=*", "config", "push.autoSetupRemote", "true");
-				git.execute(infoLogger, warningLogger).checkReturnCode();
-
-				if (retrieveLfs)
-					installGitLfs(git, infoLogger, warningLogger);
-			}
+			infoLogger.consume("Cloning repository...");
+			cloneRepository(git, fetchUrl, remoteUrl, branch, commitHash,
+					retrieveLfs, false, 0, infoLogger, warningLogger);
 		} else {
 			setupOriginUrl(git, remoteUrl, infoLogger, warningLogger);
 			if (retrieveLfs)

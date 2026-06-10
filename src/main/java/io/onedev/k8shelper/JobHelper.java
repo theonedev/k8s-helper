@@ -387,8 +387,8 @@ public class JobHelper {
 		cloneInfo.setupGitAuth(git, buildDir, buildDir.getAbsolutePath(), infoLogger, errorLogger);
 
 		cloneRepository(git, cloneInfo.getCloneUrl(), cloneInfo.getCloneUrl(), 
-				jobData.getRefName(), jobData.getCommitHash(), withLfs, withSubmodules, cloneDepth, 
-				infoLogger, errorLogger);
+				KubernetesHelper.ref2branch(jobData.getRefName()), jobData.getCommitHash(), 
+				withLfs, withSubmodules, cloneDepth, infoLogger, errorLogger);
 	}
 
 	static boolean runServerStep(String serverUrl, String jobToken, String positionStr) {

@@ -195,7 +195,7 @@ public class KubernetesHelper {
 	 * or workspace runs) remote access
 	 */
 	public static void cloneRepository(Commandline git, String cloneUrl, String remoteUrl,
-			String refName, @Nullable String commitHash, boolean withLfs, boolean withSubmodules,
+			@Nullable String branch, String commitHash, boolean withLfs, boolean withSubmodules,
 			int cloneDepth, LineConsumer stdoutLogger, LineConsumer stderrLogger) {
 		var presetArgs = new ArrayList<>(git.args());
 
@@ -210,7 +210,7 @@ public class KubernetesHelper {
 		git.addArgs("-c", "safe.directory=*", "fetch", cloneUrl, "--force", "--progress");
 		if (cloneDepth != 0)
 			git.addArgs("--depth=" + cloneDepth);
-		git.addArgs(commitHash != null ? commitHash : refName);
+		git.addArgs(commitHash);
 		git.execute(stdoutLogger, stderrLogger).checkReturnCode();
 
 		setupOriginUrl(git, remoteUrl, stdoutLogger, stderrLogger);
@@ -278,12 +278,11 @@ public class KubernetesHelper {
 			}
 		}
 
-		if (refName.startsWith("refs/heads/")) {
+		if (branch != null) {
 			git.args(presetArgs);
-			git.addArgs("-c", "safe.directory=*", "update-ref", refName, fetched);
+			git.addArgs("-c", "safe.directory=*", "update-ref", branch2ref(branch), fetched);
 			git.execute(stdoutLogger, stderrLogger).checkReturnCode();
 
-			String branch = refName.substring("refs/heads/".length());
 			git.args(presetArgs);
 			git.addArgs("-c", "safe.directory=*", "checkout", branch);
 			git.execute(stdoutLogger, new LineConsumer() {
@@ -616,6 +615,21 @@ public class KubernetesHelper {
 		if (line.startsWith(ESCAPED_CR))
 			line = "\r" + line.substring(ESCAPED_CR.length());
 		return line;
+	}
+	
+	@Nullable
+	public static String ref2branch(String refName) {
+		if (refName.startsWith("refs/heads/"))
+			return refName.substring("refs/heads/".length());
+		else
+			return null;
+	}
+
+	public static String branch2ref(String branch) {
+		if (!branch.startsWith("refs/heads/"))
+			return "refs/heads/" + branch;
+		else 
+			return branch;
 	}
 
 	static LineConsumer newInfoLogger() {

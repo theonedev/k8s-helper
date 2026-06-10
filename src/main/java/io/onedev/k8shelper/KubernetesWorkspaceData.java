@@ -16,7 +16,9 @@ public class KubernetesWorkspaceData implements Serializable {
 	private final CloneInfo cloneInfo;
 
 	@Nullable
-	private final String refName;
+	private final String branch;
+
+	private final String commitHash;
 
 	private final boolean retrieveLfs;
 
@@ -30,13 +32,15 @@ public class KubernetesWorkspaceData implements Serializable {
 	private final SetupScriptConfig setupScriptConfig;
 
 	public KubernetesWorkspaceData(String userName, String userEmail,
-							CloneInfo cloneInfo, @Nullable String refName, boolean retrieveLfs,
-							List<CacheConfigFacade> cacheConfigs, List<UserDataFacade> userDatas,
-							List<ConfigFileFacade> configFiles, @Nullable SetupScriptConfig setupScriptConfig) {
+							CloneInfo cloneInfo, String commitHash, @Nullable String branch, 
+							boolean retrieveLfs, List<CacheConfigFacade> cacheConfigs, 
+							List<UserDataFacade> userDatas, List<ConfigFileFacade> configFiles, 
+							@Nullable SetupScriptConfig setupScriptConfig) {
 		this.userName = userName;
 		this.userEmail = userEmail;
 		this.cloneInfo = cloneInfo;
-		this.refName = refName;
+		this.commitHash = commitHash;
+		this.branch = branch;
 		this.retrieveLfs = retrieveLfs;
 		this.cacheConfigs = cacheConfigs;
 		this.userDatas = userDatas;
@@ -56,9 +60,13 @@ public class KubernetesWorkspaceData implements Serializable {
 		return cloneInfo;
 	}
 
+	public String getCommitHash() {
+		return commitHash;
+	}
+
 	@Nullable
-	public String getRefName() {
-		return refName;
+	public String getBranch() {
+		return branch;
 	}
 
 	public boolean isRetrieveLfs() {
