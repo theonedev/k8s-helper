@@ -1,12 +1,12 @@
 package io.onedev.k8shelper;
 
-public class PowerShellFacade extends InterpreterFacade {
+public class PowerShellInterpreterFacade extends InterpreterFacade {
 
 	private static final long serialVersionUID = 1L;
 
 	private final String powershell;
 
-	public PowerShellFacade(String commands, String powershell) {
+	public PowerShellInterpreterFacade(String commands, String powershell) {
 		super(commands);
 		this.powershell = powershell;
 	}

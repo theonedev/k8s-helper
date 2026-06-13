@@ -1,19 +1,23 @@
 package io.onedev.k8shelper;
 
-public class ShellFacade extends InterpreterFacade {
+public class PosixInterpreterFacade extends InterpreterFacade {
 
 	private static final long serialVersionUID = 1L;
 
 	private final String shell;
 
-	public ShellFacade(String commands, String shell) {
+	public PosixInterpreterFacade(String commands) {
+		this(commands, "sh");
+	}
+
+	public PosixInterpreterFacade(String commands, String shell) {
 		super(commands);
 		this.shell = shell;
 	}
 
 	@Override
 	public ShellFacility getShellFacility() {
-		return new LinuxShellFacility(shell);
+		return new PosixFacility(shell);
 	}
 
 	@Override
