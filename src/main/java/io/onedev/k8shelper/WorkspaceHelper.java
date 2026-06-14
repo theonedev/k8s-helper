@@ -57,6 +57,8 @@ public class WorkspaceHelper {
 
 	public static final String ENV_ACCESS_TOKEN = "ONEDEV_ACCESS_TOKEN";
 
+	public static final String ENV_TRUST_CERTS_FILE = "ONEDEV_TRUST_CERTS_FILE";
+
 	public static final String ENV_WORKDIR = "ONEDEV_WORKDIR";
 
 	public static final String WORKSPACE_PATH = "/onedev-workspace";
@@ -86,7 +88,8 @@ public class WorkspaceHelper {
 	} 
 
 	public static Map<String, String> buildEnvVars(
-			Map<String, String> customEnvVars, String serverUrl, String accessToken, String workDir) {
+			Map<String, String> customEnvVars, String serverUrl, String accessToken, 
+			@Nullable String trustCertsFilePath, String workDir) {
 		var envVars = new HashMap<String, String>();
 		if (customEnvVars != null)
 			envVars.putAll(customEnvVars);
@@ -95,6 +98,8 @@ public class WorkspaceHelper {
 		envVars.put(KubernetesHelper.ENV_SERVER_URL, serverUrl);
 		envVars.put(ENV_ACCESS_TOKEN, accessToken);
 		envVars.put(ENV_WORKDIR, workDir);
+		if (trustCertsFilePath != null)
+			envVars.put(ENV_TRUST_CERTS_FILE, trustCertsFilePath);
 		return envVars;
 	}
 
@@ -172,7 +177,7 @@ public class WorkspaceHelper {
 
 		var cacheProvisioners = new ArrayList<CacheProvisioner>();
 		for (var config : workspaceData.getCacheConfigs()) {
-			var cacheProvisioner = newCacheProvisioner(serverUrl, "~api/k8s/workspace-cache", 
+			var cacheProvisioner = newCacheProvisioner(serverUrl, "~api/worker/workspace-cache", 
 					workspaceToken, config, getTrustCertsDir(), cacheProvisioners.size() + 1);
 			cacheProvisioner.download(getWorkspaceDir(), newInfoTaskLogger());
 			cacheProvisioners.add(cacheProvisioner);
@@ -222,7 +227,7 @@ public class WorkspaceHelper {
 		Client client = buildRestClient(sslFactory);
 		try {
 			WebTarget target = client.target(serverUrl)
-					.path("~api/k8s/workspace-data")
+					.path("~api/worker/workspace-data")
 					.queryParam("token", workspaceToken);
 			Invocation.Builder builder = target.request();
 
@@ -369,7 +374,7 @@ public class WorkspaceHelper {
 			String serverUrl, String workspaceToken, List<UserDataFacade> userDatas) {
 		return new UserDataProvisioner(userDatas) {
 
-			private static final String API_PATH = "~api/k8s/workspace-user-data";
+			private static final String API_PATH = "~api/worker/workspace-user-data";
 
 			@Override
 			protected void download(String key, String path, File pathFile) {

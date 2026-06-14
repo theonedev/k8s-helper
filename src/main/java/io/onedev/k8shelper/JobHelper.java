@@ -177,7 +177,7 @@ public class JobHelper {
 		Client client = buildRestClient(sslFactory);
 		try {
 			WebTarget target = client.target(serverUrl)
-					.path("~api/k8s/job-data")
+					.path("~api/worker/job-data")
 					.queryParam("token", jobToken)
 					.queryParam("workDir", getWorkDir().getAbsolutePath());
 			Invocation.Builder builder =  target.request();
@@ -437,7 +437,7 @@ public class JobHelper {
 		client.property(ClientProperties.REQUEST_ENTITY_PROCESSING, "CHUNKED");
 		try {
 			WebTarget target = client.target(serverUrl)
-					.path("~api/k8s/run-server-step")
+					.path("~api/worker/run-server-step")
 					.queryParam("token", jobToken);
 			Invocation.Builder builder = target.request();
 
@@ -516,7 +516,7 @@ public class JobHelper {
 		var entryFacade = new CompositeFacade(readJobData().getActions());
 		var cacheConfig = ((SetupCacheFacade) entryFacade.getFacade(position)).getCacheConfig();
 		var cacheProvisioners = readCacheProvisioners();
-		var cacheProvisioner = newCacheProvisioner(serverUrl, "~api/k8s/job-cache", 
+		var cacheProvisioner = newCacheProvisioner(serverUrl, "~api/worker/job-cache", 
 				jobToken, cacheConfig, getTrustCertsDir(), getCacheConfigIndex(entryFacade, position));
 		cacheProvisioner.download(getBuildDir(), new TaskLogger() {
 
@@ -535,7 +535,7 @@ public class JobHelper {
 		Client client = buildRestClient(sslFactory);
 		try {
 			WebTarget target = client.target(serverUrl)
-					.path("~api/k8s/dependencies")
+					.path("~api/worker/dependencies")
 					.queryParam("token", jobToken);
 			Invocation.Builder builder =  target.request();
 			try (Response response = builder.get()){

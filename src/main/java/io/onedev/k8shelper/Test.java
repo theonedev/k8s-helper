@@ -60,7 +60,7 @@ public class Test {
 		Client client = buildRestClient(sslFactory);
 		try {
 			WebTarget target = client.target(serverUrl)
-					.path("~api/k8s/test")
+					.path("~api/worker/test")
 					.queryParam("token", token);
 			Invocation.Builder builder = target.request();
 			try (Response response = builder.get()) {
