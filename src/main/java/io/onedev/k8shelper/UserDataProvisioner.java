@@ -1,8 +1,11 @@
 package io.onedev.k8shelper;
 
+import static io.onedev.commons.utils.StringUtils.parseQuoteTokens;
+
 import java.io.File;
 import java.io.Serializable;
 import java.text.MessageFormat;
+import java.util.Arrays;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.List;
@@ -32,8 +35,8 @@ public abstract class UserDataProvisioner implements Serializable {
 		pathIndexes = new HashMap<String, Integer>();
 		var pathIndex = 1;
 		for (var userData : userDatas) {
-			for (var path : userData.getPaths()) 
-				pathIndexes.put(path, pathIndex++);
+			for (var entry : userData.getEntries()) 
+				pathIndexes.put(entry.getPath(), pathIndex++);
 		}
 	}
 
@@ -53,7 +56,8 @@ public abstract class UserDataProvisioner implements Serializable {
 		for (var userData : userDatas) {
 			var key = userData.getKey();
 			logger.log("Downloading user data '" + key + "'...");
-			for (var path: userData.getPaths()) {
+			for (var entry: userData.getEntries()) {
+				var path = entry.getPath();
 				var pathIndex = Preconditions.checkNotNull(pathIndexes.get(path));
 				var pathFile = getPathFile(workspaceDir, pathIndex);
 				if (!pathFile.exists())
@@ -68,7 +72,11 @@ public abstract class UserDataProvisioner implements Serializable {
 			var key = userData.getKey();
 			logger.log("Uploading user data '" + key + "'...");
 			var uploaded = false;
-			for (var path : userData.getPaths()) {
+			for (var entry : userData.getEntries()) {
+				var path = entry.getPath();
+				
+				var excludes = Arrays.asList(parseQuoteTokens(entry.getExcludes()));				
+
 				var pathIndex = Preconditions.checkNotNull(pathIndexes.get(path));
 				var pathFile = getPathFile(workspaceDir, pathIndex);
 				if (!pathFile.exists())
@@ -77,13 +85,13 @@ public abstract class UserDataProvisioner implements Serializable {
 				if (provisionDate == null) 
 					changed = true;
 				else if (pathFile.isDirectory()) 
-					changed = FileUtils.hasChangedFiles(pathFile, provisionDate, userData.getChangeDetectionExcludes());
+					changed = FileUtils.hasChangedFiles(pathFile, provisionDate, excludes);
 				else 
 					changed = pathFile.lastModified() > provisionDate.getTime();
 				
 				if (changed) {
 					logger.log(MessageFormat.format("User data changed (key: {0}, path: {1}), storing", key, path));
-					upload(key, path, pathFile);
+					upload(key, path, pathFile, excludes);
 					uploaded = true;
 				}
 			}
@@ -94,7 +102,7 @@ public abstract class UserDataProvisioner implements Serializable {
 
 	protected abstract void download(String key, String path, File pathFile);
 
-	protected abstract void upload(String key, String path, File pathFile);
+	protected abstract void upload(String key, String path, File pathFile, List<String> excludes);
 
 	protected abstract void notifyUploaded(String key);
 

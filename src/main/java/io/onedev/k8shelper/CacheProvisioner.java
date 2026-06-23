@@ -4,6 +4,7 @@ import static io.onedev.k8shelper.UploadStrategy.UPLOAD_IF_NOT_EXACT_MATCH;
 
 import java.io.File;
 import java.io.Serializable;
+import java.util.Arrays;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -16,6 +17,7 @@ import org.jspecify.annotations.Nullable;
 
 import io.onedev.commons.utils.ExplicitException;
 import io.onedev.commons.utils.FileUtils;
+import io.onedev.commons.utils.StringUtils;
 import io.onedev.commons.utils.TaskLogger;
 import io.onedev.commons.utils.command.Commandline;
 
@@ -101,13 +103,14 @@ public abstract class CacheProvisioner implements Serializable {
     }
 
     public void upload(File baseDir, TaskLogger logger) {
+        var excludePathPatterns = Arrays.asList(StringUtils.parseQuoteTokens(config.getChangeDetectionExcludes()));
         for (var path: config.getPaths()) {
             var pathDir = getPathDir(baseDir, path);
             if (config.getUploadStrategy() == UPLOAD_IF_NOT_EXACT_MATCH) {
                 if (!exactMatchPaths.contains(path)) 
                     uploadThenLog(path, pathDir, logger);
             } else {
-                if (provisionDate == null || FileUtils.hasChangedFiles(pathDir, provisionDate, config.getChangeDetectionExcludes())) {
+                if (provisionDate == null || FileUtils.hasChangedFiles(pathDir, provisionDate, excludePathPatterns)) {
                     logger.log("Changes detected in " + config.describe(path));
                     uploadThenLog(path, pathDir, logger);
                 }   

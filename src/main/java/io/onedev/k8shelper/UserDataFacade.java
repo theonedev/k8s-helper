@@ -3,36 +3,25 @@ package io.onedev.k8shelper;
 import java.io.Serializable;
 import java.util.List;
 
-import org.jspecify.annotations.Nullable;
-
 public class UserDataFacade implements Serializable {
 
 	private static final long serialVersionUID = 1L;
 
 	private final String key;
 
-	private final List<String> paths;
+	private final List<UserDataEntryFacade> entries;
 
-	@Nullable
-	private final String changeDetectionExcludes;
-
-	public UserDataFacade(String key, List<String> paths, @Nullable String changeDetectionExcludes) {
+	public UserDataFacade(String key, List<UserDataEntryFacade> entries) {
 		this.key = key;
-		this.paths = paths;
-		this.changeDetectionExcludes = changeDetectionExcludes;
+		this.entries = entries;
 	}
 
 	public String getKey() {
 		return key;
 	}
 
-	public List<String> getPaths() {
-		return paths;
-	}
-
-	@Nullable
-	public String getChangeDetectionExcludes() {
-		return changeDetectionExcludes;
+	public List<UserDataEntryFacade> getEntries() {
+		return entries;
 	}
 
 }

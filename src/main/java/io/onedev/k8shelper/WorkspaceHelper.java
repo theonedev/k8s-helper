@@ -334,7 +334,7 @@ public class WorkspaceHelper {
 	}
 
 	public static void uploadUserData(String serverUrl, String apiPath, String token,
-				String key, String path, File pathDir, @Nullable SSLFactory sslFactory) {
+				String key, String path, File pathDir, List<String> excludes, @Nullable SSLFactory sslFactory) {
 		Client client = buildRestClient(sslFactory);
 		client.property(REQUEST_ENTITY_PROCESSING, "CHUNKED");
 		try {
@@ -344,7 +344,7 @@ public class WorkspaceHelper {
 					.queryParam("key", key)
 					.queryParam("path", path);
 			Invocation.Builder builder = target.request();
-			StreamingOutput output = os -> TarUtils.tar(pathDir, os, false);
+			StreamingOutput output = os -> TarUtils.tar(pathDir, excludes, os, false);
 			try (Response response = builder.post(Entity.entity(output, APPLICATION_OCTET_STREAM))) {
 				checkStatus(response);
 			}
@@ -383,9 +383,9 @@ public class WorkspaceHelper {
 			}
 
 			@Override
-			protected void upload(String key, String path, File pathFile) {
+			protected void upload(String key, String path, File pathFile, List<String> excludes) {
 				var sslFactory = KubernetesHelper.buildSSLFactory(WorkspaceHelper.getTrustCertsDir());
-				uploadUserData(serverUrl, API_PATH, workspaceToken, key, path, pathFile, sslFactory);
+				uploadUserData(serverUrl, API_PATH, workspaceToken, key, path, pathFile, excludes, sslFactory);
 			}
 
 			@Override
