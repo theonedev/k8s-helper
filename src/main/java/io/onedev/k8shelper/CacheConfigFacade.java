@@ -8,6 +8,7 @@ import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.List;
 import java.util.Set;
+import java.util.stream.Collectors;
 
 import org.apache.commons.lang3.tuple.Pair;
 import org.jspecify.annotations.Nullable;
@@ -24,11 +25,9 @@ public class CacheConfigFacade implements Serializable {
 
     private final Pair<Set<String>, Set<String>> checksumFiles;
 
-    private final List<String> paths;
+    private final List<CacheEntryFacade> entries;
 
     private final UploadStrategy uploadStrategy;
-
-    private final String changeDetectionExcludes;
 
     private final String uploadProjectPath;
 
@@ -37,14 +36,12 @@ public class CacheConfigFacade implements Serializable {
     private String checksum;
 
     public CacheConfigFacade(String key, @Nullable Pair<Set<String>, Set<String>> checksumFiles,
-                            List<String> paths, UploadStrategy uploadStrategy,
-                            @Nullable String changeDetectionExcludes,
+                            List<CacheEntryFacade> entries, UploadStrategy uploadStrategy,
                             @Nullable String uploadProjectPath, @Nullable String uploadAccessToken) {
         this.key = key;
         this.checksumFiles = checksumFiles;
-        this.paths = paths;
+        this.entries = entries;
         this.uploadStrategy = uploadStrategy;
-        this.changeDetectionExcludes = changeDetectionExcludes;
         this.uploadProjectPath = uploadProjectPath;
         this.uploadAccessToken = uploadAccessToken;
     }
@@ -64,16 +61,15 @@ public class CacheConfigFacade implements Serializable {
     }
 
     public List<String> getPaths() {
-        return paths;
+        return entries.stream().map(CacheEntryFacade::getPath).collect(Collectors.toList());
+    }
+
+    public List<CacheEntryFacade> getEntries() {
+        return entries;
     }
 
     public UploadStrategy getUploadStrategy() {
         return uploadStrategy;
-    }
-
-    @Nullable
-    public String getChangeDetectionExcludes() {
-        return changeDetectionExcludes;
     }
 
     public String getUploadProjectPath() {

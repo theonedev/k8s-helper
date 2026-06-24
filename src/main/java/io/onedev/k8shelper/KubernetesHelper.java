@@ -386,7 +386,8 @@ public class KubernetesHelper {
 	}
 
 	public static boolean uploadCache(String serverUrl, String apiPath, String token,
-			CacheConfigFacade cacheConfig, String path, File cacheDir, @Nullable SSLFactory sslFactory) {
+			CacheConfigFacade cacheConfig, String path, File cacheDir, List<String> excludes,
+			@Nullable SSLFactory sslFactory) {
 		var key = cacheConfig.getKey();
 		var checksum = cacheConfig.getChecksum();
 		var projectPath = cacheConfig.getUploadProjectPath();
@@ -414,7 +415,7 @@ public class KubernetesHelper {
 					.request();
 			if (accessToken != null)
 				builder.header(AUTHORIZATION, BEARER + " " + accessToken);
-			StreamingOutput output = os -> TarUtils.tar(cacheDir, os, false);
+			StreamingOutput output = os -> TarUtils.tar(cacheDir, excludes, os, false);
 			try (Response response = builder.post(entity(output, APPLICATION_OCTET_STREAM))) {
 				checkStatus(response);
 				return true;
@@ -425,8 +426,8 @@ public class KubernetesHelper {
 	}
 
 	public static void uploadCacheThenLog(String serverUrl, String apiPath, String token, CacheConfigFacade cacheConfig,
-				String path, File cacheDir, @Nullable SSLFactory sslFactory) {
-		if (uploadCache(serverUrl, apiPath, token, cacheConfig, path, cacheDir, sslFactory))
+				String path, File cacheDir, List<String> excludes, @Nullable SSLFactory sslFactory) {
+		if (uploadCache(serverUrl, apiPath, token, cacheConfig, path, cacheDir, excludes, sslFactory))
 			logger.info("Uploaded " + cacheConfig.describeUpload(path));
 		else
 			logger.warn("Not authorized to upload " + cacheConfig.describeUpload(path));
@@ -552,10 +553,10 @@ public class KubernetesHelper {
 			}
 
 			@Override
-			protected boolean upload(CacheConfigFacade config, String path, File pathDir) {
+			protected boolean upload(CacheConfigFacade config, String path, File pathDir, List<String> excludes) {
 				var sslFactory = KubernetesHelper.buildSSLFactory(trustCertsDir);
 				return KubernetesHelper.uploadCache(serverUrl, apiPath, token, config,
-						path, pathDir, sslFactory);
+						path, pathDir, excludes, sslFactory);
 			}
 			
 		};

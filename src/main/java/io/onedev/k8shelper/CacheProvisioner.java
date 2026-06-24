@@ -8,6 +8,7 @@ import java.util.Arrays;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.function.Function;
@@ -42,7 +43,8 @@ public abstract class CacheProvisioner implements Serializable {
         this.configIndex = configIndex;
         absolutePathIndexes = new HashMap<>();
         var absolutePathIndex = 1;
-        for (var path : config.getPaths()) {
+        for (var entry : config.getEntries()) {
+            var path = entry.getPath();
             if (FilenameUtils.getPrefixLength(path) > 0)
                 absolutePathIndexes.put(path, absolutePathIndex++);
         }
@@ -80,7 +82,8 @@ public abstract class CacheProvisioner implements Serializable {
         config.replacePlaceholders(baseDir);
         config.computeChecksum(new File(baseDir, "work"), logger);
 
-        for (var path: config.getPaths()) {
+        for (var entry: config.getEntries()) {
+            var path = entry.getPath();
             var pathDir = getPathDir(baseDir, path);
             FileUtils.createDir(pathDir);
             var availability = download(config.getKey(), config.getChecksum(), path, pathDir);
@@ -95,31 +98,33 @@ public abstract class CacheProvisioner implements Serializable {
         provisionDate = new Date();
     }
 
-    private void uploadThenLog(String path, File pathDir, TaskLogger logger) {
-        if (upload(config, path, pathDir))
+    private void uploadThenLog(String path, File pathDir, List<String> excludes, TaskLogger logger) {
+        if (upload(config, path, pathDir, excludes))
             logger.log(String.format("Uploaded %s", config.describeUpload(path)));
         else
             logger.warning(String.format("Not authorized to upload %s", config.describeUpload(path)));
     }
 
     public void upload(File baseDir, TaskLogger logger) {
-        var excludePathPatterns = Arrays.asList(StringUtils.parseQuoteTokens(config.getChangeDetectionExcludes()));
-        for (var path: config.getPaths()) {
+        for (var entry: config.getEntries()) {
+            var path = entry.getPath();
             var pathDir = getPathDir(baseDir, path);
+            var excludes = Arrays.asList(StringUtils.parseQuoteTokens(entry.getExcludes()));
             if (config.getUploadStrategy() == UPLOAD_IF_NOT_EXACT_MATCH) {
                 if (!exactMatchPaths.contains(path)) 
-                    uploadThenLog(path, pathDir, logger);
+                    uploadThenLog(path, pathDir, excludes, logger);
             } else {
-                if (provisionDate == null || FileUtils.hasChangedFiles(pathDir, provisionDate, excludePathPatterns)) {
+                if (provisionDate == null || FileUtils.hasChangedFiles(pathDir, provisionDate, excludes)) {
                     logger.log("Changes detected in " + config.describe(path));
-                    uploadThenLog(path, pathDir, logger);
+                    uploadThenLog(path, pathDir, excludes, logger);
                 }   
             }                 
         }
     }
 
     public void mountVolumes(Commandline docker, File workspaceDir, Function<String, String> hostPathResolver) {
-        for (var path: config.getPaths()) {
+        for (var entry: config.getEntries()) {
+            var path = entry.getPath();
             if (FilenameUtils.getPrefixLength(path) > 0) {
                 var pathDir = getPathDir(workspaceDir, path);
                 docker.addArgs("-v", hostPathResolver.apply(pathDir.getAbsolutePath()) + ":" + path);
@@ -130,6 +135,6 @@ public abstract class CacheProvisioner implements Serializable {
     protected abstract CacheAvailability download(String key, @Nullable String checksum,
             String path, File pathDir);
 
-    protected abstract boolean upload(CacheConfigFacade config, String path, File pathDir);
+    protected abstract boolean upload(CacheConfigFacade config, String path, File pathDir, List<String> excludes);
 
 }
