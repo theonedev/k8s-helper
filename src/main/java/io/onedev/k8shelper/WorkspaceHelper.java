@@ -7,13 +7,11 @@ import static io.onedev.k8shelper.KubernetesHelper.changeOwner;
 import static io.onedev.k8shelper.KubernetesHelper.checkStatus;
 import static io.onedev.k8shelper.KubernetesHelper.cloneRepository;
 import static io.onedev.k8shelper.KubernetesHelper.initRepository;
-import static io.onedev.k8shelper.KubernetesHelper.installGitLfs;
 import static io.onedev.k8shelper.KubernetesHelper.newCacheProvisioner;
 import static io.onedev.k8shelper.KubernetesHelper.newErrorLogger;
 import static io.onedev.k8shelper.KubernetesHelper.newInfoLogger;
 import static io.onedev.k8shelper.KubernetesHelper.readInt;
 import static io.onedev.k8shelper.KubernetesHelper.setupGitCerts;
-import static io.onedev.k8shelper.KubernetesHelper.setupOriginUrl;
 import static java.nio.charset.StandardCharsets.UTF_8;
 import static javax.ws.rs.core.MediaType.APPLICATION_OCTET_STREAM;
 import static org.apache.commons.lang3.SerializationUtils.deserialize;
@@ -291,9 +289,6 @@ public class WorkspaceHelper {
 			cloneRepository(git, fetchUrl, remoteUrl, branch, commitHash,
 					retrieveLfs, false, 0, infoLogger, warningLogger);
 		} else {
-			setupOriginUrl(git, remoteUrl, infoLogger, warningLogger);
-			if (retrieveLfs)
-				installGitLfs(git, infoLogger, warningLogger);
 			infoLogger.consume("Repository already exists, skipping clone");
 		}
 	}

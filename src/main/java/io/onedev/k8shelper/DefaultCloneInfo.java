@@ -12,11 +12,11 @@ public class DefaultCloneInfo extends CloneInfo {
 	
 	private static final long serialVersionUID = 1L;
 
-	private final String jobToken;
+	private final String token;
 	
-	public DefaultCloneInfo(String cloneUrl, String jobToken) {
+	public DefaultCloneInfo(String cloneUrl, String token) {
 		super(cloneUrl);
-		this.jobToken = jobToken;
+		this.token = token;
 	}
 
 	@Override
@@ -25,7 +25,7 @@ public class DefaultCloneInfo extends CloneInfo {
 		var presetArgs = new ArrayList<String>(git.args());
 		// Use onedev specific authorization header as otherwise it will fail git operations
 		// against other git servers in command step
-		String extraHeader = KubernetesHelper.AUTHORIZATION + ": " + KubernetesHelper.BEARER + " " + jobToken;
+		String extraHeader = KubernetesHelper.AUTHORIZATION + ": " + KubernetesHelper.BEARER + " " + token;
 		git.args("-c", "safe.directory=*", "config", "http.extraHeader", extraHeader);
 		git.execute(stdoutLogger, stderrLogger).checkReturnCode();
 		git.args(presetArgs);
@@ -36,7 +36,7 @@ public class DefaultCloneInfo extends CloneInfo {
 	public String toString() {
 		return "default-" 
 				+ Base64.getEncoder().encodeToString(getCloneUrl().getBytes(StandardCharsets.UTF_8)) 
-				+ "-" + Base64.getEncoder().encodeToString(jobToken.getBytes(StandardCharsets.UTF_8));
+				+ "-" + Base64.getEncoder().encodeToString(token.getBytes(StandardCharsets.UTF_8));
 	}
 	
 }
