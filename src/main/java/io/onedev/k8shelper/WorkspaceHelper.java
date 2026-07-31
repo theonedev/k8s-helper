@@ -302,12 +302,12 @@ public class WorkspaceHelper {
 		}
 	}
 
-	public static boolean downloadUserData(String serverUrl, String apiPath, String token,
+	public static boolean downloadUserData(String serverUrl, String token,
 				String key, String path, File pathFile, @Nullable SSLFactory sslFactory) {
 		Client client = buildRestClient(sslFactory);
 		try {
 			WebTarget target = client.target(serverUrl)
-					.path(apiPath)
+					.path("~api/worker/workspace-user-data")
 					.queryParam("token", token)
 					.queryParam("key", key)
 					.queryParam("path", path);
@@ -328,13 +328,13 @@ public class WorkspaceHelper {
 		}
 	}
 
-	public static void uploadUserData(String serverUrl, String apiPath, String token,
+	public static void uploadUserData(String serverUrl, String token,
 				String key, String path, File pathDir, List<String> excludes, @Nullable SSLFactory sslFactory) {
 		Client client = buildRestClient(sslFactory);
 		client.property(REQUEST_ENTITY_PROCESSING, "CHUNKED");
 		try {
 			WebTarget target = client.target(serverUrl)
-					.path(apiPath)
+					.path("~api/worker/workspace-user-data")
 					.queryParam("token", token)
 					.queryParam("key", key)
 					.queryParam("path", path);
@@ -348,12 +348,11 @@ public class WorkspaceHelper {
 		}
 	}
 
-	public static void notifyUserDataUploaded(String serverUrl, String apiPath, String token,
-				String key, @Nullable SSLFactory sslFactory) {
+	public static void notifyUserDataUploaded(String serverUrl, String token, String key, @Nullable SSLFactory sslFactory) {
 		Client client = buildRestClient(sslFactory);
 		try {
 			WebTarget target = client.target(serverUrl)
-					.path(apiPath)
+					.path("~api/worker/workspace-user-data")
 					.queryParam("token", token)
 					.queryParam("key", key);
 			Invocation.Builder builder = target.request();
@@ -369,24 +368,22 @@ public class WorkspaceHelper {
 			String serverUrl, String workspaceToken, List<UserDataFacade> userDatas) {
 		return new UserDataProvisioner(userDatas) {
 
-			private static final String API_PATH = "~api/worker/workspace-user-data";
-
 			@Override
 			protected void download(String key, String path, File pathFile) {
 				var sslFactory = KubernetesHelper.buildSSLFactory(WorkspaceHelper.getTrustCertsDir());
-				downloadUserData(serverUrl, API_PATH, workspaceToken, key, path, pathFile, sslFactory);
+				downloadUserData(serverUrl, workspaceToken, key, path, pathFile, sslFactory);
 			}
 
 			@Override
 			protected void upload(String key, String path, File pathFile, List<String> excludes) {
 				var sslFactory = KubernetesHelper.buildSSLFactory(WorkspaceHelper.getTrustCertsDir());
-				uploadUserData(serverUrl, API_PATH, workspaceToken, key, path, pathFile, excludes, sslFactory);
+				uploadUserData(serverUrl, workspaceToken, key, path, pathFile, excludes, sslFactory);
 			}
 
 			@Override
 			protected void notifyUploaded(String key) {
 				var sslFactory = KubernetesHelper.buildSSLFactory(WorkspaceHelper.getTrustCertsDir());
-				notifyUserDataUploaded(serverUrl, API_PATH, workspaceToken, key, sslFactory);
+				notifyUserDataUploaded(serverUrl, workspaceToken, key, sslFactory);
 			}
 
 		};
