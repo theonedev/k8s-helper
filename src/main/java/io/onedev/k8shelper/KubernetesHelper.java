@@ -15,6 +15,8 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.nio.ByteBuffer;
+import java.nio.file.FileStore;
+import java.nio.file.Files;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
@@ -441,9 +443,40 @@ public class KubernetesHelper {
 		logger.error(TaskLogger.wrapWithAnsiError(TaskLogger.toString(null, e)));
 	}
 
+	/**
+	 * Change ownership of {@code dirOrFile}. When {@code dirOrFile} is a directory,
+	 * nested mount points on a different filesystem or a read-only filesystem
+	 * (for example a ConfigMap volume mounted under the workspace/build directory)
+	 * are skipped.
+	 */
 	public static void changeOwner(File dirOrFile, String owner) {
+		try {
+			FileStore startStore = Files.getFileStore(dirOrFile.toPath());
+			if (startStore.isReadOnly())
+				return;
+			if (!dirOrFile.isDirectory()) {
+				executeChown(owner, dirOrFile.getAbsolutePath(), false);
+				return;
+			}
+			executeChown(owner, dirOrFile.getAbsolutePath(), false);
+			File[] children = dirOrFile.listFiles();
+			if (children != null) {
+				for (File child : children) {
+					FileStore childStore = Files.getFileStore(child.toPath());
+					if (childStore.equals(startStore) && !childStore.isReadOnly())
+						executeChown(owner, child.getAbsolutePath(), true);
+				}
+			}
+		} catch (IOException e) {
+			throw new RuntimeException(e);
+		}
+	}
+
+	private static void executeChown(String owner, String path, boolean recursive) {
 		var chown = new Commandline("chown");
-		chown.addArgs("-R", owner, dirOrFile.getAbsolutePath());
+		if (recursive)
+			chown.addArgs("-R");
+		chown.addArgs(owner, path);
 		chown.execute(new LineConsumer() {
 			@Override
 			public void consume(String line) {
