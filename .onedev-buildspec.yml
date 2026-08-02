@@ -1,4 +1,4 @@
-version: 32
+version: 52
 imports:
 - projectPath: onedev
   revision: main
@@ -6,44 +6,58 @@ imports:
 jobs:
 - name: Release
   steps:
-  - !CheckoutStep
+  - type: CheckoutStep
     name: checkout code
-    cloneCredential: !DefaultCredential {}
+    cloneCredential:
+      type: DefaultCredential
     withLfs: false
     withSubmodules: true
-    condition: ALL_PREVIOUS_STEPS_WERE_SUCCESSFUL
-  - !UseTemplateStep
+    condition: SUCCESSFUL
+    optional: false
+  - type: UseTemplateStep
     name: set up cache
     templateName: set up cache
-    condition: ALL_PREVIOUS_STEPS_WERE_SUCCESSFUL
-  - !UseTemplateStep
+    condition: SUCCESSFUL
+    optional: false
+  - type: UseTemplateStep
     name: set build version
     templateName: set build version
-    condition: ALL_PREVIOUS_STEPS_WERE_SUCCESSFUL
-  - !CommandStep
+    condition: SUCCESSFUL
+    optional: false
+  - type: CommandStep
     name: build and deploy
     runInContainer: true
     image: '@property:buildEnvironment@'
-    interpreter: !DefaultInterpreter
+    interpreter:
+      type: PosixInterpreter
+      shell: sh
       commands: |
         set -e
+        curl -H "Authorization: Bearer @secret:onedev-token@" -f -G -X DELETE https://code.onedev.io/~api/packages --data-urlencode 'query="Name" is "io.onedev:k8s-helper" and "Version" is "@build_version@"'
+
         mvn deploy -Dmaven.deploy.username=@job_token@ -Dmaven.deploy.password=@secrets:maven-deploy-password@
+    runAs: 0:0
     useTTY: false
-    condition: ALL_PREVIOUS_STEPS_WERE_SUCCESSFUL
-  - !BuildImageStep
+    condition: SUCCESSFUL
+    optional: false
+  - type: BuildImageStep
     name: build docker image
-    output: !RegistryOutput
+    output:
+      type: RegistryOutput
       tags: 1dev/k8s-helper:@build_version@
     platforms: linux/amd64,linux/arm64
-    condition: ALL_PREVIOUS_STEPS_WERE_SUCCESSFUL
-  - !CreateTagStep
+    condition: SUCCESSFUL
+    optional: false
+  - type: CreateTagStep
     name: create tag
     tagName: v@build_version@
     accessTokenSecret: onedev-token
-    condition: ALL_PREVIOUS_STEPS_WERE_SUCCESSFUL
+    condition: SUCCESSFUL
+    optional: false
   triggers:
-  - !BranchUpdateTrigger
+  - type: BranchUpdateTrigger
     branches: main
+    userMatch: anyone
   jobDependencies:
   - jobName: Scan Vulnerabilities
     requireSuccessful: true
@@ -53,44 +67,55 @@ jobs:
   timeout: 3600
 - name: Scan Vulnerabilities
   steps:
-  - !CheckoutStep
+  - type: CheckoutStep
     name: checkout
-    cloneCredential: !DefaultCredential {}
+    cloneCredential:
+      type: DefaultCredential
     withLfs: false
     withSubmodules: false
     cloneDepth: 1
-    condition: ALL_PREVIOUS_STEPS_WERE_SUCCESSFUL
-  - !OsvVulnerScannerStep
+    condition: SUCCESSFUL
+    optional: false
+  - type: OsvSourceScannerStep
     name: scan
     recursive: true
     failThreshold: HIGH
     reportName: Dependency Vulnerabilities
-    condition: ALL_PREVIOUS_STEPS_WERE_SUCCESSFUL
+    publishJSONReportAsArtifact: false
+    condition: SUCCESSFUL
+    optional: false
   retryCondition: never
   maxRetries: 3
   retryDelay: 30
   timeout: 3600
 - name: Sync with GitHub
   steps:
-  - !CheckoutStep
+  - type: CheckoutStep
     name: checkout
-    cloneCredential: !DefaultCredential {}
+    cloneCredential:
+      type: DefaultCredential
     withLfs: false
     withSubmodules: true
-    condition: ALL_PREVIOUS_STEPS_WERE_SUCCESSFUL
-  - !CommandStep
+    condition: SUCCESSFUL
+    optional: false
+  - type: CommandStep
     name: sync
     runInContainer: true
     image: alpine/git:1.0.7
-    interpreter: !DefaultInterpreter
+    interpreter:
+      type: PosixInterpreter
+      shell: sh
       commands: |
         git config --global --unset http.extraHeader
         git push -f https://robinshine:@secrets:github-token@@@github.com/theonedev/k8s-helper HEAD:main
+    runAs: 0:0
     useTTY: false
-    condition: ALL_PREVIOUS_STEPS_WERE_SUCCESSFUL
+    condition: SUCCESSFUL
+    optional: false
   triggers:
-  - !BranchUpdateTrigger
+  - type: BranchUpdateTrigger
     branches: main
+    userMatch: anyone
     projects: onedev/k8s-helper
   retryCondition: never
   maxRetries: 3
