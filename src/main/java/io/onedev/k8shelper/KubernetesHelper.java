@@ -445,29 +445,28 @@ public class KubernetesHelper {
 		changeOwner(dirOrFile, owner, false);
 	}
 
-	/**
-	 * Change ownership of {@code dirOrFile}, excluding specified direct children.
-	 */
 	public static void changeOwner(File dirOrFile, String owner, boolean excludeTrustCerts) {
-		if (!dirOrFile.isDirectory()) {
-			executeChown(owner, dirOrFile.getAbsolutePath(), false);
+		if (!excludeTrustCerts) {
+			executeChown(owner, dirOrFile, true);
 			return;
-		}		
-		executeChown(owner, dirOrFile.getAbsolutePath(), false);
+		}
+		executeChown(owner, dirOrFile, false);
+		if (!dirOrFile.isDirectory()) 
+			return;
 		File[] children = dirOrFile.listFiles();
 		if (children != null) {
 			for (File child : children) {
 				if (!excludeTrustCerts || !child.getName().equals("trust-certs"))
-					executeChown(owner, child.getAbsolutePath(), true);
+					executeChown(owner, child, true);
 			}
 		}
 	}
 
-	private static void executeChown(String owner, String path, boolean recursive) {
+	private static void executeChown(String owner, File dirOrFile, boolean recursive) {
 		var chown = new Commandline("chown");
 		if (recursive)
 			chown.addArgs("-R");
-		chown.addArgs(owner, path);
+		chown.addArgs(owner, dirOrFile.getAbsolutePath());
 		chown.execute(new LineConsumer() {
 			@Override
 			public void consume(String line) {
