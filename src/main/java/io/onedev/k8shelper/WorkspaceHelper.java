@@ -191,7 +191,7 @@ public class WorkspaceHelper {
 		writeInitInfo(new InitInfo(cacheProvisioners, userDataProvisioner));
 
 		if (!runAs.equals("0:0"))
-			changeOwner(getWorkspaceDir(), runAs);
+			changeOwner(getWorkspaceDir(), runAs, true);
 
 		logger.info("Workspace initialized");
 	}

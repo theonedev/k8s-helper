@@ -294,7 +294,7 @@ public class JobHelper {
 						CommandFacade commandFacade = (CommandFacade) facade;
 						commandFacade.generatePauseCommand(getBuildDir());
 						if (!commandFacade.getRunAs().equals("0:0"))
-							changeOwner(getBuildDir(), commandFacade.getRunAs());
+							changeOwner(getBuildDir(), commandFacade.getRunAs(), true);
 					}
 
 					stepScript = replacePlaceholders(stepScript, getBuildDir());
