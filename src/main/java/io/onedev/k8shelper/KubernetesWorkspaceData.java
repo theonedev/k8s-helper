@@ -28,14 +28,13 @@ public class KubernetesWorkspaceData implements Serializable {
 
 	private final List<ConfigFileFacade> configFiles;
 
-	@Nullable
-	private final SetupScriptConfig setupScriptConfig;
+	private final ScriptConfig scriptConfig;
 
 	public KubernetesWorkspaceData(String userName, String userEmail,
 							CloneInfo cloneInfo, String commitHash, @Nullable String branch, 
 							boolean retrieveLfs, List<CacheConfigFacade> cacheConfigs, 
 							List<UserDataFacade> userDatas, List<ConfigFileFacade> configFiles, 
-							@Nullable SetupScriptConfig setupScriptConfig) {
+							ScriptConfig scriptConfig) {
 		this.userName = userName;
 		this.userEmail = userEmail;
 		this.cloneInfo = cloneInfo;
@@ -45,7 +44,7 @@ public class KubernetesWorkspaceData implements Serializable {
 		this.cacheConfigs = cacheConfigs;
 		this.userDatas = userDatas;
 		this.configFiles = configFiles;
-		this.setupScriptConfig = setupScriptConfig;
+		this.scriptConfig = scriptConfig;
 	}
 
 	public String getUserName() {
@@ -85,9 +84,8 @@ public class KubernetesWorkspaceData implements Serializable {
 		return configFiles;
 	}
 
-	@Nullable
-	public SetupScriptConfig getSetupScriptConfig() {
-		return setupScriptConfig;
+	public ScriptConfig getScriptConfig() {
+		return scriptConfig;
 	}
 
 }

@@ -63,11 +63,17 @@ public class WorkspaceHelper {
 
 	public static final String SHUTDOWN_FILE = ".shutdown";
 
+	public static final String TEARDOWN_DONE_FILE = ".teardown-done";
+
 	public static final String CONTAINER_READY_FILE = ".container-ready";
 
 	public static final String CONTAINER_READY_MESSAGE = "===== OneDev Workspace Container Ready =====";
 
 	public static final String INIT_INFO_FILE = ".init-info";
+
+	public static final String SETUP_SCRIPT_NAME = "setup";
+
+	public static final String TEARDOWN_SCRIPT_NAME = "teardown";
 
 	public static final String ENV_TERM = "TERM";
 
@@ -101,28 +107,49 @@ public class WorkspaceHelper {
 		return envVars;
 	}
 
-	public static String buildEntrypointArgs(@Nullable SetupScriptConfig setupScriptConfig, 
-				boolean indicateSuccessfulViaFile) {
-		var entrypointArgs = new StringBuilder(GIT_TRUST_ALL_DIRS);
-		if (setupScriptConfig != null) {
-			var containerScriptPath = WORKSPACE_PATH + "/setup" + setupScriptConfig.getScriptExtension();
+	public static String buildEntrypointArgs(ScriptConfig scriptConfig, boolean indicateSuccessfulViaFile) {
+		var entrypointArgs = new StringBuilder(GIT_TRUST_ALL_DIRS)
+				.append(" && cd ").append(WORKSPACE_PATH).append("/work");
+		if (scriptConfig.getSetupCommands() != null) {
 			entrypointArgs
-					.append(" && cd ")
-					.append(WORKSPACE_PATH).append("/work")
 					.append(" && echo Running setup commands... && ")
-					.append(setupScriptConfig.getScriptExecutable());
-			for (var option : setupScriptConfig.getScriptOptions())
-				entrypointArgs.append(" ").append(option);
-			entrypointArgs
-					.append(" ")
-					.append(containerScriptPath)
-					.append(getReadyMarker(indicateSuccessfulViaFile));
-			entrypointArgs.append(" || exit 1");
+					.append(buildScriptCommand(WORKSPACE_PATH, SETUP_SCRIPT_NAME, scriptConfig))
+					.append(getReadyMarker(indicateSuccessfulViaFile))
+					.append(" || exit 1");
 		} else {
 			entrypointArgs.append(getReadyMarker(indicateSuccessfulViaFile));
 		}
-		entrypointArgs.append(" && tail -f /dev/null");
+
+		/*
+		 * Teardown commands are run from entrypoint instead of being executed from outside, so 
+		 * that they can access the container while it is still running. They are triggered either 
+		 * by the stop signal (docker provisioned workspace), or by the shutdown file (kubernetes 
+		 * provisioned workspace, whose main container is only signalled when the pod is deleted, 
+		 * that is, after the sidecar uploaded cache and user data). The teardown done file tells 
+		 * the sidecar that it can start uploading
+		 */
+		entrypointArgs.append("; teardown() { trap - TERM INT; ");
+		if (scriptConfig.getTeardownCommands() != null) {
+			entrypointArgs
+					.append("echo Running teardown commands...; ")
+					.append(buildScriptCommand(WORKSPACE_PATH, TEARDOWN_SCRIPT_NAME, scriptConfig))
+					.append("; ");
+		}
+		entrypointArgs
+				.append("touch ").append(WORKSPACE_PATH).append("/").append(TEARDOWN_DONE_FILE)
+				.append("; exit 0; }")
+				.append("; trap teardown TERM INT")
+				.append("; while [ ! -f ").append(WORKSPACE_PATH).append("/").append(SHUTDOWN_FILE)
+				.append(" ]; do sleep 1; done")
+				.append("; teardown");
 		return entrypointArgs.toString();
+	}
+
+	private static String buildScriptCommand(String workspaceDirPath, String scriptName, ScriptConfig scriptConfig) {
+		var command = new StringBuilder(scriptConfig.getScriptExecutable());
+		for (var option : scriptConfig.getScriptOptions())
+			command.append(" ").append(option);
+		return command.append(" ").append(getScriptPath(workspaceDirPath, scriptName, scriptConfig)).toString();
 	}
 
 	private static String getReadyMarker(boolean indicateSuccessfulViaFile) {
@@ -159,6 +186,7 @@ public class WorkspaceHelper {
 	public static void init(String serverUrl, String workspaceToken, String runAs) {
 		FileUtils.createDir(getWorkDir());
 		FileUtils.deleteFile(getShutdownFile());
+		FileUtils.deleteFile(getTeardownDoneFile());
 
 		SSLFactory sslFactory = buildSSLFactory(getTrustCertsDir());
 
@@ -185,8 +213,7 @@ public class WorkspaceHelper {
 				serverUrl, workspaceToken, workspaceData.getUserDatas());
 		userDataProvisioner.download(getWorkspaceDir(), newInfoTaskLogger());
 
-		if (workspaceData.getSetupScriptConfig() != null)
-			writeSetupScript(getWorkspaceDir(), workspaceData.getSetupScriptConfig());
+		writeScripts(getWorkspaceDir(), workspaceData.getScriptConfig());
 
 		writeInitInfo(new InitInfo(cacheProvisioners, userDataProvisioner));
 
@@ -200,15 +227,28 @@ public class WorkspaceHelper {
 		return new File(getWorkspaceDir(), SHUTDOWN_FILE);
 	}
 
-	public static void sidecar(String serverUrl, String workspaceToken) {
-		File shutdownFile = getShutdownFile();
-		while (!shutdownFile.exists()) {
+	private static File getTeardownDoneFile() {
+		return new File(getWorkspaceDir(), TEARDOWN_DONE_FILE);
+	}
+
+	private static void awaitFile(File file) {
+		while (!file.exists()) {
 			try {
 				Thread.sleep(1000);
 			} catch (InterruptedException e) {
 				throw new RuntimeException(e);
 			}
 		}
+	}
+
+	public static void sidecar(String serverUrl, String workspaceToken) {
+		/*
+		 * The shutdown file makes main container run teardown commands from its entrypoint, and 
+		 * the done file is touched after they finish. Waiting for the done file hence also waits 
+		 * for the shutdown, and makes sure that changes made by teardown commands are not missed 
+		 * by the upload below
+		 */
+		awaitFile(getTeardownDoneFile());
 
 		InitInfo initInfo = readInitInfo();
 		if (initInfo != null) {
@@ -293,12 +333,24 @@ public class WorkspaceHelper {
 		}
 	}
 
-	public static void writeSetupScript(File workspaceDir, SetupScriptConfig setupScriptConfig) {
-		File scriptFile = new File(workspaceDir, "setup" + setupScriptConfig.getScriptExtension());
-		try {
-			FileUtils.writeStringToFile(scriptFile, setupScriptConfig.getSetupCommands(), UTF_8);
-		} catch (IOException e) {
-			throw new RuntimeException(e);
+	public static String getScriptPath(String workspaceDirPath, String scriptName, ScriptConfig scriptConfig) {
+		return workspaceDirPath + "/" + scriptName + scriptConfig.getScriptExtension();
+	}
+
+	public static void writeScripts(File workspaceDir, ScriptConfig scriptConfig) {
+		writeScript(workspaceDir, SETUP_SCRIPT_NAME, scriptConfig.getSetupCommands(), scriptConfig);
+		writeScript(workspaceDir, TEARDOWN_SCRIPT_NAME, scriptConfig.getTeardownCommands(), scriptConfig);
+	}
+
+	private static void writeScript(File workspaceDir, String scriptName,
+			@Nullable String commands, ScriptConfig scriptConfig) {
+		if (commands != null) {
+			File scriptFile = new File(workspaceDir, scriptName + scriptConfig.getScriptExtension());
+			try {
+				FileUtils.writeStringToFile(scriptFile, commands, UTF_8);
+			} catch (IOException e) {
+				throw new RuntimeException(e);
+			}
 		}
 	}
 
