@@ -1,8 +1,7 @@
-version: 52
+version: 53
 imports:
-- projectPath: onedev
+- projectPath: onedev/template
   revision: main
-  accessTokenSecret: onedev-token
 jobs:
 - name: Release
   steps:
@@ -64,6 +63,8 @@ jobs:
   retryCondition: never
   maxRetries: 3
   retryDelay: 30
+  includeUpstreamWhenRebuild: false
+  includeDownstreamWhenRebuild: false
   timeout: 3600
 - name: Scan Vulnerabilities
   steps:
@@ -87,6 +88,8 @@ jobs:
   retryCondition: never
   maxRetries: 3
   retryDelay: 30
+  includeUpstreamWhenRebuild: false
+  includeDownstreamWhenRebuild: false
   timeout: 3600
 - name: Sync with GitHub
   steps:
@@ -120,4 +123,6 @@ jobs:
   retryCondition: never
   maxRetries: 3
   retryDelay: 30
+  includeUpstreamWhenRebuild: false
+  includeDownstreamWhenRebuild: false
   timeout: 3600
