@@ -26,7 +26,7 @@ jobs:
   - type: CommandStep
     name: build and deploy
     runInContainer: true
-    image: '@property:buildEnvironment@'
+    image: '@property:buildenv@'
     interpreter:
       type: PosixInterpreter
       shell: sh
