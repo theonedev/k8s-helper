@@ -196,7 +196,8 @@ public class WorkspaceHelper {
 		var cloneUrl = cloneInfo.getCloneUrl();
 		setupRepository(getWorkspaceDir(), new Commandline("git"), 
 				workspaceData.getUserName(), workspaceData.getUserEmail(), cloneInfo, workspaceData.getCommitHash(), 
-				workspaceData.getBranch(), workspaceData.isRetrieveLfs(), getTrustCertsDir(), 
+				workspaceData.getBranch(), workspaceData.isRetrieveLfs(), workspaceData.isRetrieveSubmodules(),
+				getTrustCertsDir(),
 				WORKSPACE_PATH, cloneUrl, newInfoLogger(), newErrorLogger());
 
 		new ConfigFileProvisioner(workspaceData.getConfigFiles()).provision(getWorkspaceDir(), newInfoTaskLogger());
@@ -283,7 +284,8 @@ public class WorkspaceHelper {
 
 	public static void setupRepository(File workspaceDir, Commandline git, String userName,
 			String userEmail, CloneInfo cloneInfo, String commitHash, @Nullable String branch, 
-			boolean retrieveLfs, File trustCertsDir, String runtimeWorkspaceDirPath, String fetchUrl,
+			boolean retrieveLfs, boolean retrieveSubmodules, File trustCertsDir,
+			String runtimeWorkspaceDirPath, String fetchUrl,
 			LineConsumer infoLogger, LineConsumer warningLogger) {
 		infoLogger.consume("Initializing workspace git repository...");
 
@@ -327,7 +329,7 @@ public class WorkspaceHelper {
 		if (noCommits.get()) {
 			infoLogger.consume("Cloning repository...");
 			cloneRepository(git, fetchUrl, remoteUrl, branch, commitHash,
-					retrieveLfs, false, 0, infoLogger, warningLogger);
+					retrieveLfs, retrieveSubmodules, 0, infoLogger, warningLogger);
 		} else {
 			infoLogger.consume("Repository already exists, skipping clone");
 		}

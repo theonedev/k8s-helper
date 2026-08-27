@@ -199,14 +199,6 @@ public class KubernetesHelper {
 			int cloneDepth, LineConsumer stdoutLogger, LineConsumer stderrLogger) {
 		var presetArgs = new ArrayList<>(git.args());
 
-		String configContent;
-		try {
-			var configFile = new File(git.workingDir(), ".git/config");
-			configContent = FileUtils.readFileToString(configFile, UTF_8);
-		} catch (IOException e) {
-			throw new RuntimeException(e);
-		}
-
 		git.addArgs("-c", "safe.directory=*", "fetch", cloneUrl, "--force", "--progress");
 		if (cloneDepth != 0)
 			git.addArgs("--depth=" + cloneDepth);
@@ -271,11 +263,25 @@ public class KubernetesHelper {
 
 			}).checkReturnCode();
 
-			if (configContent != null) {
-				var modulesDir = new File(git.workingDir(), ".git/modules");
-				if (modulesDir.isDirectory())
-					writeConfigToSubmodules(modulesDir, configContent);
-			}
+			git.args(presetArgs);
+			git.addArgs("-c", "safe.directory=*", "submodule", "foreach", "--quiet", "--recursive", """
+					branch=$(git symbolic-ref --short refs/remotes/origin/HEAD 2>/dev/null); \
+					if [ -n "$branch" ]; then \
+						branch=${branch#origin/}; \
+						git fetch origin "$branch:refs/remotes/origin/$branch" --quiet && \
+						git checkout -B "$branch" "$sha1" --quiet && \
+						git branch --set-upstream-to="origin/$branch" "$branch" >/dev/null || true; \
+					fi
+					""");
+			git.execute(stdoutLogger, stderrLogger).checkReturnCode();
+
+			git.args("-c", "safe.directory=*", "submodule", "foreach", "--quiet", "--recursive", """
+					for key in http.extraHeader http.sslCAInfo core.sshCommand user.name user.email pull.rebase; do \
+						value=$(git -C "$toplevel" config --get "$key"); \
+						if [ -n "$value" ]; then git config "$key" "$value"; fi; \
+					done
+					""");
+			git.execute(stdoutLogger, stderrLogger).checkReturnCode();
 		}
 
 		if (branch != null) {
@@ -306,21 +312,6 @@ public class KubernetesHelper {
 			git.execute(stdoutLogger, stderrLogger).checkReturnCode();
 		}
 		git.args(presetArgs);
-	}
-
-	private static void writeConfigToSubmodules(File modulesDir, String configContent) {
-		for (File child : modulesDir.listFiles()) {
-			if (child.isDirectory()) {
-				try {
-					FileUtils.writeStringToFile(new File(child, "config"), configContent, UTF_8);
-				} catch (IOException e) {
-					throw new RuntimeException(e);
-				}
-				var nestedModulesDir = new File(child, "modules");
-				if (nestedModulesDir.isDirectory())
-					writeConfigToSubmodules(nestedModulesDir, configContent);
-			}
-		}
 	}
 
 	public static SSLFactory buildSSLFactory(File trustCertsDir) {

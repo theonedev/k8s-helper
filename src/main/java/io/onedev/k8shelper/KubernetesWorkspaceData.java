@@ -22,6 +22,8 @@ public class KubernetesWorkspaceData implements Serializable {
 
 	private final boolean retrieveLfs;
 
+	private final boolean retrieveSubmodules;
+
 	private final List<CacheConfigFacade> cacheConfigs;
 
 	private final List<UserDataFacade> userDatas;
@@ -32,7 +34,8 @@ public class KubernetesWorkspaceData implements Serializable {
 
 	public KubernetesWorkspaceData(String userName, String userEmail,
 							CloneInfo cloneInfo, String commitHash, @Nullable String branch, 
-							boolean retrieveLfs, List<CacheConfigFacade> cacheConfigs, 
+							boolean retrieveLfs, boolean retrieveSubmodules,
+							List<CacheConfigFacade> cacheConfigs,
 							List<UserDataFacade> userDatas, List<ConfigFileFacade> configFiles, 
 							ScriptConfig scriptConfig) {
 		this.userName = userName;
@@ -41,6 +44,7 @@ public class KubernetesWorkspaceData implements Serializable {
 		this.commitHash = commitHash;
 		this.branch = branch;
 		this.retrieveLfs = retrieveLfs;
+		this.retrieveSubmodules = retrieveSubmodules;
 		this.cacheConfigs = cacheConfigs;
 		this.userDatas = userDatas;
 		this.configFiles = configFiles;
@@ -70,6 +74,10 @@ public class KubernetesWorkspaceData implements Serializable {
 
 	public boolean isRetrieveLfs() {
 		return retrieveLfs;
+	}
+
+	public boolean isRetrieveSubmodules() {
+		return retrieveSubmodules;
 	}
 
 	public List<CacheConfigFacade> getCacheConfigs() {
