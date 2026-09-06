@@ -139,8 +139,8 @@ public class KubernetesHelper {
 		}
 	}
 
-	public static void installGitLfs(Commandline git, LineConsumer stdoutLogger, LineConsumer stderrLogger) {
-		git.args("-c", "safe.directory=*", "lfs", "install", "--force");
+	private static void installGitLfs(Commandline git, LineConsumer stdoutLogger, LineConsumer stderrLogger) {
+		git.args("-c", "safe.directory=*", "lfs", "install", "--local", "--force");
 		git.execute(stdoutLogger, stderrLogger).checkReturnCode();
 	}
 
