@@ -10,7 +10,7 @@
 		<version>1.4.0</version>
 	</parent>
 	<artifactId>k8s-helper</artifactId>
-	<version>4.3.5</version>
+	<version>4.3.6</version>
 	<build>
 		<plugins>
 			<plugin>
@@ -131,7 +131,7 @@
 	</dependencies>
 	<properties>
 		<jackson.version>2.22.2</jackson.version>
-		<commons.version>4.2.2</commons.version>
+		<commons.version>4.2.3</commons.version>
 		<jersey.version>4.0.2</jersey.version>
 		<ayza.version>10.0.0</ayza.version>
 	</properties>
