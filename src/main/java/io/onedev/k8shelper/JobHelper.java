@@ -40,6 +40,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.regex.Pattern;
 
 import jakarta.ws.rs.client.Client;
 import jakarta.ws.rs.client.Entity;
@@ -71,7 +72,56 @@ import io.onedev.commons.utils.command.LineConsumer;
 import nl.altindag.ssl.SSLFactory;
 
 public class JobHelper {
-			
+
+	public static final String STEP_EVENT_PREFIX = "##onedev-step:";
+
+	public static final String PHASE_PREFIX = "##onedev-phase:";
+
+	public static final String INITIALIZATION = "initialization";
+
+	public static final String FINALIZATION = "finalization";
+
+	public static final Pattern STEP_ID_PATTERN = Pattern.compile("step-(0|[1-9][0-9]*)(-(0|[1-9][0-9]*))*");
+
+	public enum StepEventKind { START, SUCCESSFUL, FAILED, CANCELLED, SKIP }
+
+	public record StepEvent(StepEventKind kind, String step) {
+	}
+
+	public static String buildStepEventMessage(StepEventKind kind, String step) {
+		return STEP_EVENT_PREFIX + kind + ":" + step;
+	}
+
+	@Nullable
+	public static StepEvent parseStepEventMessage(String message) {
+		if (!message.startsWith(STEP_EVENT_PREFIX))
+			return null;
+		var parts = message.substring(STEP_EVENT_PREFIX.length()).split(":", -1);
+		if (parts.length != 2 || !STEP_ID_PATTERN.matcher(parts[1]).matches())
+			return null;
+		try {
+			var kind = StepEventKind.valueOf(parts[0]);
+			parseStepPosition(parts[1].substring("step-".length()));
+			return new StepEvent(kind, parts[1]);
+		} catch (IllegalArgumentException e) {
+			return null;
+		}
+	}
+
+	public static String buildStepStartMessage(List<Integer> position) {
+		return buildStepEventMessage(StepEventKind.START, "step-" + stringifyStepPosition(position));
+	}
+
+	public static String buildStepEndMessage(List<Integer> position, StepEventKind kind) {
+		if (kind != StepEventKind.SUCCESSFUL && kind != StepEventKind.FAILED && kind != StepEventKind.CANCELLED)
+			throw new IllegalArgumentException("Not a step outcome: " + kind);
+		return buildStepEventMessage(kind, "step-" + stringifyStepPosition(position));
+	}
+
+	public static String buildStepSkipMessage(List<Integer> position) {
+		return buildStepEventMessage(StepEventKind.SKIP, "step-" + stringifyStepPosition(position));
+	}
+
 	public static final String ENV_JOB_TOKEN = "ONEDEV_JOB_TOKEN";
 		
 	public static final String PAUSE = "pause";
@@ -115,15 +165,19 @@ public class JobHelper {
 		};
 	}
 
-	private static void generateCommandScript(List<Integer> position, String stepPath,
+	/** Returns a shell command that writes a step marker to the container log. */
+	private static String logStepEvent(String eventMessage) {
+		// Begin on a fresh line even when the command output has no trailing newline.
+		return "  printf '\\n%s\\n' '" + eventMessage.replace("'", "'\\''") + "'";
+	}
+
+	private static void generateCommandScript(List<Integer> position,
 			CommandFacade commandFacade, File workingDir) {
 		try {
 			String positionStr = stringifyStepPosition(position);
 			File commandDir = getCommandDir();
 			File stepScriptFile = new File(commandDir, "step-" + positionStr + commandFacade.getScriptExtension());
 			FileUtils.writeStringToFile(stepScriptFile, commandFacade.normalizeCommands(commandFacade.getCommands()), UTF_8);
-
-			String escapedStepPath = stepPath.replace("'", "'\\''");
 
 			File scriptFile = new File(commandDir, positionStr + ".sh");
 			String markPrefix = getMarkDir().getAbsolutePath() + "/" + positionStr;
@@ -134,31 +188,31 @@ public class JobHelper {
 					"done",
 					"if [ -f " + markPrefix + ".skip ]",
 					"then",
-					"  echo '" + TaskLogger.wrapWithAnsiNotice("Step \"" + escapedStepPath + "\" is skipped") + "'",
+					logStepEvent(buildStepSkipMessage(position)),
 					"  echo " + LOG_END_MESSAGE,
 					"  exit 0",
 					"fi",
+					logStepEvent(buildStepStartMessage(position)),
 					"if [ -f " + markPrefix + ".error ]",
 					"then",
-					"  echo '" + TaskLogger.wrapWithAnsiNotice("Running step \"" + escapedStepPath + "\"...") + "'",
 					"  cat " + markPrefix + ".error",
 					"  touch " + markPrefix + ".failed",
+					logStepEvent(buildStepEndMessage(position, StepEventKind.FAILED)),
 					"  echo " + LOG_END_MESSAGE,
 					"  exit 0",
 					"fi",
 					"cd " + "'" + workingDir.getAbsolutePath() + "'",
-					"echo '" + TaskLogger.wrapWithAnsiNotice("Running step \"" + escapedStepPath + "\"...") + "'",
 					GIT_TRUST_ALL_DIRS,
 					commandFacade.getExecutable() + " " + stream(commandFacade.getScriptOptions()).map(it -> it + " ").collect(joining()) + stepScriptFile.getAbsolutePath(),
 
 					"exitCode=\"$?\"",
 					"if [ $exitCode -eq 0 ]",
 					"then",
-					"  echo '" + TaskLogger.wrapWithAnsiSuccess("Step \"" + escapedStepPath + "\" is successful") + "'",
+					logStepEvent(buildStepEndMessage(position, StepEventKind.SUCCESSFUL)),
 					"  touch " + markPrefix + ".successful",
 					"else",
 					"  echo \"" + TaskLogger.wrapWithAnsiError("Command exited with code $exitCode") + "\"",
-					"  echo '" + TaskLogger.wrapWithAnsiError("Step \"" + escapedStepPath + "\" is failed") + "'",
+					logStepEvent(buildStepEndMessage(position, StepEventKind.FAILED)),
 					"  touch " + markPrefix + ".failed",
 					"fi",
 					"echo " + LOG_END_MESSAGE,
@@ -205,8 +259,6 @@ public class JobHelper {
 		
 		CompositeFacade entryFacade = new CompositeFacade(jobData.getActions());
 		entryFacade.traverse((LeafVisitor<Void>) (facade, position) -> {
-			String stepPath = entryFacade.getPathAsString(position);
-
 			String positionStr = stringifyStepPosition(position);
 
 			File workingDir = getWorkDir();
@@ -239,7 +291,7 @@ public class JobHelper {
 				commandFacade = new CommandFacade("any", "0:0", new ArrayList<>(), new HashMap<>(), true, commandsBuilder.toString());
 			}
 
-			generateCommandScript(position, stepPath, commandFacade, workingDir);
+			generateCommandScript(position, commandFacade, workingDir);
 
 			return null;
 		}, new ArrayList<>());
