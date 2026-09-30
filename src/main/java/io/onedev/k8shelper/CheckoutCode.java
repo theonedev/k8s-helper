@@ -1,7 +1,5 @@
 package io.onedev.k8shelper;
 
-import static io.onedev.k8shelper.KubernetesHelper.LOG_END_MESSAGE;
-
 import java.nio.charset.StandardCharsets;
 import java.util.Base64;
 
@@ -34,7 +32,6 @@ public class CheckoutCode {
 			logger.error("Error executing step", e);
 			exitCode = 1;
 		} finally {
-			logger.info(LOG_END_MESSAGE);
 			System.exit(exitCode);
 		}
 	}

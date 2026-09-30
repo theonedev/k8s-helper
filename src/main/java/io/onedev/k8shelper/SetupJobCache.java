@@ -1,7 +1,5 @@
 package io.onedev.k8shelper;
 
-import static io.onedev.k8shelper.KubernetesHelper.LOG_END_MESSAGE;
-
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -27,7 +25,6 @@ public class SetupJobCache {
 			logger.error(TaskLogger.wrapWithAnsiError(TaskLogger.toString(null, e)));
 			exitCode = 1;
 		} finally {
-			logger.info(LOG_END_MESSAGE);
 			System.exit(exitCode);
 		}
 	}
