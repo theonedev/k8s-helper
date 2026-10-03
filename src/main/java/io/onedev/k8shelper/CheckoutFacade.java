@@ -52,14 +52,18 @@ public class CheckoutFacade extends LeafFacade {
 	}
 
 	public void setupWorkingDir(Commandline git, File workDir) {
+		File checkoutDir;
 		if (getCheckoutPath() != null) {
 			if (getCheckoutPath().contains(".."))
 				throw new ExplicitException("Checkout path should not contain '..'");
-			git.workingDir(new File(workDir, getCheckoutPath()));
-			FileUtils.createDir(git.workingDir());
+			checkoutDir = new File(workDir, getCheckoutPath());
 		} else {
-			git.workingDir(workDir);
+			checkoutDir = workDir;
 		}
+		if (KubernetesHelper.hasSymbolLinks(workDir.getAbsoluteFile().getParentFile(), checkoutDir.getAbsoluteFile()))
+			throw new ExplicitException("Checkout path does not allow to contain symbol links");
+		git.workingDir(checkoutDir);
+		FileUtils.createDir(checkoutDir);
 	}
 
 }

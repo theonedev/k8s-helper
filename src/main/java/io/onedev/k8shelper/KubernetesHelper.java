@@ -15,6 +15,8 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.nio.ByteBuffer;
+import java.nio.file.Files;
+import java.nio.file.LinkOption;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
@@ -486,11 +488,31 @@ public class KubernetesHelper {
 		return placeholderFiles;
 	}
 
+	/*
+	 * Build dir is accessible to job containers, and symbol links planted there will be
+	 * resolved against host file system when accessed from outside of containers
+	 */
+	public static boolean hasSymbolLinks(File baseDir, File file) {
+		var currentPath = baseDir.toPath();
+		for (var segment: currentPath.relativize(file.toPath())) {
+			currentPath = currentPath.resolve(segment);
+			if (Files.isSymbolicLink(currentPath))
+				return true;
+			if (!Files.exists(currentPath, LinkOption.NOFOLLOW_LINKS))
+				break;
+		}
+		return false;
+	}
+
 	public static Map<String, String> readPlaceholderValues(File baseDir, Collection<String> placeholders) {
 		Map<String, String> placeholderValues = new HashMap<>();
 		for (String placeholder: placeholders) {
+			if (placeholder.contains(".."))
+				throw new ExplicitException("Placeholder does not allow to contain '..': " + placeholder);
 			File file = new File(baseDir, placeholder);
-			if (file.exists()) {
+			if (hasSymbolLinks(baseDir, file))
+				throw new ExplicitException("Placeholder does not allow to contain symbol links: " + placeholder);
+			if (Files.isRegularFile(file.toPath(), LinkOption.NOFOLLOW_LINKS)) {
 				try {
 					placeholderValues.put(placeholder, readFileToString(file, UTF_8).trim());
 				} catch (IOException e) {

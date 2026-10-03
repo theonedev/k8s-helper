@@ -87,12 +87,26 @@ public class CacheConfigFacade implements Serializable {
 
     public void computeChecksum(File workDir, TaskLogger logger) {
         if (checksumFiles != null) {
+            for (var pattern: checksumFiles.getLeft()) {
+                if (pattern.contains(".."))
+                    throw new ExplicitException("Checksum files does not allow to contain '..': " + pattern);
+            }
+            for (var pattern: checksumFiles.getRight()) {
+                if (pattern.contains(".."))
+                    throw new ExplicitException("Checksum files does not allow to contain '..': " + pattern);
+            }
+            if (Files.isSymbolicLink(workDir.toPath()))
+                throw new ExplicitException("Work dir does not allow to be symbol link: " + workDir);
             if (workDir.exists()) {    
                 try {
                     var digest = MessageDigest.getInstance("MD5");
                     var count = 0;
+                    var workPath = workDir.toPath().toRealPath();
                     for (var file: FileUtils.listFiles(workDir, checksumFiles.getLeft(), checksumFiles.getRight())) {
-                        digest.update(Files.readAllBytes(file.toPath()));
+                        var filePath = file.toPath().toRealPath();
+                        if (!filePath.startsWith(workPath))
+                            throw new ExplicitException("Checksum file resolves outside of work dir: " + file);
+                        digest.update(Files.readAllBytes(filePath));
                         count++;
                     }
                     if (count == 0)

@@ -22,6 +22,7 @@ import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.Serializable;
+import java.nio.file.Files;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -40,6 +41,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import io.onedev.commons.utils.ExceptionUtils;
+import io.onedev.commons.utils.ExplicitException;
 import io.onedev.commons.utils.FileUtils;
 import io.onedev.commons.utils.TarUtils;
 import io.onedev.commons.utils.TaskLogger;
@@ -290,6 +292,8 @@ public class WorkspaceHelper {
 		infoLogger.consume("Initializing workspace git repository...");
 
 		var workDir = new File(workspaceDir, "work");
+		if (Files.isSymbolicLink(workDir.toPath()))
+			throw new ExplicitException("Workspace work dir does not allow to be symbol link: " + workDir);
 		FileUtils.createDir(workDir);
 		git.workingDir(workDir);
 
