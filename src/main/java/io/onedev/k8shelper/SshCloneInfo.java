@@ -7,6 +7,7 @@ import java.util.Base64;
 
 import org.apache.commons.lang3.SystemUtils;
 
+import io.onedev.commons.utils.ExplicitException;
 import io.onedev.commons.utils.FileUtils;
 import io.onedev.commons.utils.command.Commandline;
 import io.onedev.commons.utils.command.LineConsumer;
@@ -32,9 +33,14 @@ public class SshCloneInfo extends CloneInfo {
 		var presetArgs = new ArrayList<String>(git.args());
 
 		File sshDir = new File(resourceDir, ".ssh");
+		File privateKeyFile = new File(sshDir, "id_rsa");
+		File knownHostsFile = new File(sshDir, "known_hosts");
+		if (KubernetesHelper.hasSymbolLinks(resourceDir, privateKeyFile)
+				|| KubernetesHelper.hasSymbolLinks(resourceDir, knownHostsFile)) {
+			throw new ExplicitException("Git SSH credential paths must not contain symbolic links");
+		}
 		FileUtils.createDir(sshDir);
 		
-		File privateKeyFile = new File(sshDir, "id_rsa");
 		if (privateKeyFile.exists() && !SystemUtils.IS_OS_WINDOWS) {
 			Commandline chmod = new Commandline("chmod");
 			chmod.workingDir(sshDir).addArgs("600", "id_rsa");
@@ -43,7 +49,6 @@ public class SshCloneInfo extends CloneInfo {
 		
 		FileUtils.writeFile(privateKeyFile, privateKey);
 		
-		File knownHostsFile = new File(sshDir, "known_hosts");
 		FileUtils.writeFile(knownHostsFile, knownHosts);
 		if (!SystemUtils.IS_OS_WINDOWS) {
 			Commandline chmod = new Commandline("chmod");

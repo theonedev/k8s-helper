@@ -4,6 +4,7 @@ import static java.nio.charset.StandardCharsets.UTF_8;
 
 import java.io.File;
 import java.io.Serializable;
+import java.net.URI;
 import java.util.Base64;
 import java.util.List;
 
@@ -24,6 +25,12 @@ public abstract class CloneInfo implements Serializable {
 	
 	public String getCloneUrl() {
 		return cloneUrl;
+	}
+
+	protected String getHttpExtraHeaderConfigKey() {
+		// Share credentials with repositories on this server, but not other origins.
+		var serverUrl = URI.create(getCloneUrl()).resolve("/");
+		return "http." + serverUrl + ".extraHeader";
 	}
 	
 	/**

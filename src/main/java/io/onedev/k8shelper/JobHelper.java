@@ -419,14 +419,8 @@ public class JobHelper {
 		
 		File workDir = getWorkDir();
 		Commandline git = new Commandline("git");
-		if (checkoutPath != null) {
-			if (checkoutPath.contains(".."))
-				throw new ExplicitException("Checkout path should not contain '..'");
-			git.workingDir(new File(workDir, checkoutPath));
-			FileUtils.createDir(git.workingDir());
-		} else {
-			git.workingDir(workDir);
-		}
+		new CheckoutFacade(cloneDepth, withLfs, withSubmodules, cloneInfo, checkoutPath)
+				.setupWorkingDir(git, workDir);
 
 		initRepository(git, infoLogger, errorLogger);
 		

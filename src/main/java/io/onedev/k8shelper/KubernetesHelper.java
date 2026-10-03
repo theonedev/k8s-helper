@@ -15,9 +15,11 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.nio.ByteBuffer;
+import java.nio.charset.CharacterCodingException;
 import java.nio.file.Files;
 import java.nio.file.LinkOption;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -110,6 +112,8 @@ public class KubernetesHelper {
 			}
 
 			if (!certLines.isEmpty()) {
+				if (Files.isSymbolicLink(trustCertsFile.toPath()))
+					throw new ExplicitException("Git trust certificates file must not be a symbolic link: " + trustCertsFile);
 				try {
 					FileUtils.writeLines(trustCertsFile, certLines, "\n");
 				} catch (IOException e) {
@@ -146,18 +150,65 @@ public class KubernetesHelper {
 		git.execute(stdoutLogger, stderrLogger).checkReturnCode();
 	}
 
+	/**
+	 * Initialize fresh metadata without letting Git inspect an existing repository.
+	 * Working files are retained; submodule work trees are cleaned after fetching.
+	 */
 	public static void initRepository(Commandline git, LineConsumer stdoutLogger, LineConsumer stderrLogger) {
-		if (!new File(git.workingDir(), ".git").exists()) {
-			git.args("-c", "safe.directory=*", "init", "-b", "main", ".");
-			git.execute(new LineConsumer() {
+		var workDir = git.workingDir();
+		if (Files.isSymbolicLink(workDir.toPath()))
+			throw new ExplicitException("Git working directory must not be a symbolic link: " + workDir);
+		FileUtils.deletePath(new File(workDir, ".git"));
+		// Do not use leftover repository configuration when the fetched commit has none.
+		FileUtils.deletePath(new File(workDir, ".gitmodules"));
+		FileUtils.deletePath(new File(workDir, ".lfsconfig"));
+		git.args("-c", "safe.directory=*", "init", "--template=", "-b", "main", ".");
+		git.execute(new LineConsumer() {
 
-				@Override
-				public void consume(String line) {
-					if (!line.startsWith("Initialized empty Git repository"))
-						stdoutLogger.consume(line);
+			@Override
+			public void consume(String line) {
+				if (!line.startsWith("Initialized empty Git repository"))
+					stdoutLogger.consume(line);
+			}
+
+		}, stderrLogger).checkReturnCode();
+	}
+
+	private static void cleanSubmoduleWorkTrees(Commandline git, String commit,
+			LineConsumer stderrLogger) {
+		var output = new ByteArrayOutputStream();
+		git.args("-c", "safe.directory=*", "ls-tree", "--full-tree", "-r", "-z", commit);
+		git.execute(output, stderrLogger).checkReturnCode();
+		var entries = output.toByteArray();
+		var submodulePrefix = "160000 commit ".getBytes(UTF_8);
+		var workPath = git.workingDir().toPath().toAbsolutePath().normalize();
+		for (int start = 0; start < entries.length;) {
+			int end = start;
+			while (end < entries.length && entries[end] != 0)
+				end++;
+			if (end - start >= submodulePrefix.length
+					&& Arrays.equals(entries, start, start + submodulePrefix.length,
+							submodulePrefix, 0, submodulePrefix.length)) {
+				int pathStart = start + submodulePrefix.length;
+				while (pathStart < end && entries[pathStart] != '\t')
+					pathStart++;
+				pathStart++;
+				String path;
+				try {
+					// Only paths we delete need decoding; leave ordinary filenames to Git.
+					path = UTF_8.newDecoder().decode(ByteBuffer.wrap(entries, pathStart, end - pathStart)).toString();
+				} catch (CharacterCodingException e) {
+					throw new ExplicitException("Submodule paths must be valid UTF-8 for safe submodule cleanup");
 				}
-
-			}, stderrLogger).checkReturnCode();
+				var submodulePath = workPath.resolve(path).normalize();
+				if (!submodulePath.startsWith(workPath) || submodulePath.equals(workPath))
+					throw new ExplicitException("Invalid submodule path: " + path);
+				// The final component may be a link: delete it, never its target.
+				if (hasSymbolLinks(workPath.toFile(), submodulePath.getParent().toFile()))
+					throw new ExplicitException("Submodule path must not traverse symbolic links: " + path);
+				FileUtils.deletePath(submodulePath.toFile());
+			}
+			start = end + 1;
 		}
 	}
 
@@ -214,8 +265,13 @@ public class KubernetesHelper {
 
 		var fetched = commitHash != null ? commitHash : "FETCH_HEAD";
 
+		// Read gitlinks from the fetched tree, never from leftover submodule metadata.
+		// Empty outer submodule paths also eliminate all pre-existing nested repositories.
+		cleanSubmoduleWorkTrees(git, fetched, stderrLogger);
+
 		git.args(presetArgs);
-		git.addArgs("-c", "safe.directory=*", "checkout", "--progress", "--quiet", fetched);
+		git.addArgs("-c", "safe.directory=*", "-c", "submodule.recurse=false",
+				"checkout", "--force", "--progress", "--quiet", fetched);
 		git.execute(stdoutLogger, new LineConsumer() {
 
 			@Override
@@ -229,21 +285,6 @@ public class KubernetesHelper {
 		}).checkReturnCode();
 
 		if (withSubmodules && new File(git.workingDir(), ".gitmodules").exists()) {
-			// deinit submodules in case submodule url is changed
-			git.args(presetArgs);
-			git.addArgs("-c", "safe.directory=*", "submodule", "deinit", "--all", "--force", "--quiet");
-			git.execute(stdoutLogger, new LineConsumer() {
-
-				@Override
-				public void consume(String line) {
-					if (!line.contains("error: could not lock config file") &&
-							!line.contains("warning: Could not unset core.worktree setting in submodule")) {
-						stderrLogger.consume(line);
-					}
-				}
-
-			}).checkReturnCode();
-
 			stdoutLogger.consume("Retrieving submodules...");
 
 			git.args(presetArgs);
@@ -278,9 +319,14 @@ public class KubernetesHelper {
 			git.execute(stdoutLogger, stderrLogger).checkReturnCode();
 
 			git.args("-c", "safe.directory=*", "submodule", "foreach", "--quiet", "--recursive", """
-					for key in http.extraHeader http.sslCAInfo core.sshCommand user.name user.email pull.rebase; do \
+					for key in http.sslCAInfo core.sshCommand user.name user.email pull.rebase; do \
 						value=$(git -C "$toplevel" config --get "$key"); \
 						if [ -n "$value" ]; then git config "$key" "$value"; fi; \
+					done; \
+					git -C "$toplevel" config --name-only --get-regexp '^http\\..*\\.extraheader$' | \
+					while IFS= read -r key; do \
+						value=$(git -C "$toplevel" config --get "$key"); \
+						git config "$key" "$value"; \
 					done
 					""");
 			git.execute(stdoutLogger, stderrLogger).checkReturnCode();

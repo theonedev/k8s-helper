@@ -26,10 +26,11 @@ public class DefaultCloneInfo extends CloneInfo {
 		// Use onedev specific authorization header as otherwise it will fail git operations
 		// against other git servers in command step
 		String extraHeader = KubernetesHelper.AUTHORIZATION + ": " + KubernetesHelper.BEARER + " " + token;
-		git.args("-c", "safe.directory=*", "config", "http.extraHeader", extraHeader);
+		var configKey = getHttpExtraHeaderConfigKey();
+		git.args("-c", "safe.directory=*", "config", configKey, extraHeader);
 		git.execute(stdoutLogger, stderrLogger).checkReturnCode();
 		git.args(presetArgs);
-		git.addArgs("-c", "http.extraHeader=" + extraHeader);
+		git.addArgs("-c", configKey + "=" + extraHeader);
 	}
 
 	@Override

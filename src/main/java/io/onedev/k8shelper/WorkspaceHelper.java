@@ -23,11 +23,11 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.Serializable;
 import java.nio.file.Files;
+import java.nio.file.LinkOption;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.atomic.AtomicBoolean;
 
 import jakarta.ws.rs.client.Client;
 import jakarta.ws.rs.client.Entity;
@@ -72,6 +72,8 @@ public class WorkspaceHelper {
 	public static final String CONTAINER_READY_MESSAGE = "===== OneDev Workspace Container Ready =====";
 
 	public static final String INIT_INFO_FILE = ".init-info";
+
+	public static final String GIT_CLONE_SUCCESSFUL_FILE = ".git-clone-successful";
 
 	public static final String SETUP_SCRIPT_NAME = "setup";
 
@@ -187,8 +189,8 @@ public class WorkspaceHelper {
 
 	public static void init(String serverUrl, String workspaceToken, String runAs) {
 		FileUtils.createDir(getWorkDir());
-		FileUtils.deleteFile(getShutdownFile());
-		FileUtils.deleteFile(getTeardownDoneFile());
+		FileUtils.deletePath(getShutdownFile());
+		FileUtils.deletePath(getTeardownDoneFile());
 
 		SSLFactory sslFactory = buildSSLFactory(getTrustCertsDir());
 
@@ -289,11 +291,18 @@ public class WorkspaceHelper {
 			boolean retrieveLfs, boolean retrieveSubmodules, File trustCertsDir,
 			String runtimeWorkspaceDirPath, String fetchUrl,
 			LineConsumer infoLogger, LineConsumer warningLogger) {
-		infoLogger.consume("Initializing workspace git repository...");
-
 		var workDir = new File(workspaceDir, "work");
 		if (Files.isSymbolicLink(workDir.toPath()))
 			throw new ExplicitException("Workspace work dir does not allow to be symbol link: " + workDir);
+		var successfulFile = new File(workspaceDir, GIT_CLONE_SUCCESSFUL_FILE);
+		if (Files.isRegularFile(successfulFile.toPath(), LinkOption.NOFOLLOW_LINKS)
+				&& Files.exists(new File(workDir, ".git").toPath(), LinkOption.NOFOLLOW_LINKS)) {
+			infoLogger.consume("Repository was cloned successfully, skipping git setup");
+			return;
+		}
+		FileUtils.deletePath(successfulFile);
+
+		infoLogger.consume("Initializing workspace git repository...");
 		FileUtils.createDir(workDir);
 		git.workingDir(workDir);
 
@@ -306,21 +315,6 @@ public class WorkspaceHelper {
 		git.args("-c", "safe.directory=*", "config", "user.email", userEmail);
 		git.execute(infoLogger, warningLogger).checkReturnCode();
 
-		var noCommits = new AtomicBoolean(false);
-		git.args("-c", "safe.directory=*", "status");
-		git.execute(new LineConsumer() {
-
-			@Override
-			public void consume(String line) {
-				if (line.startsWith("No commits yet")) {
-					noCommits.set(true);
-				} else if (!line.startsWith("On branch") && line.trim().length() != 0) {
-					infoLogger.consume(line);
-				}
-			}
-
-		}, warningLogger).checkReturnCode();
-
 		git.clearArgs();
 		var trustCertsFile = new File(workspaceDir, "trust-certs.pem");
 		setupGitCerts(git, trustCertsDir, trustCertsFile,
@@ -329,13 +323,14 @@ public class WorkspaceHelper {
 		cloneInfo.setupGitAuth(git, workspaceDir, runtimeWorkspaceDirPath,
 				infoLogger, warningLogger);
 
-		var remoteUrl = cloneInfo.getCloneUrl();
-		if (noCommits.get()) {
-			infoLogger.consume("Cloning repository...");
-			cloneRepository(git, fetchUrl, remoteUrl, branch, commitHash,
-					retrieveLfs, retrieveSubmodules, 0, infoLogger, warningLogger);
-		} else {
-			infoLogger.consume("Repository already exists, skipping clone");
+		infoLogger.consume("Cloning repository...");
+		cloneRepository(git, fetchUrl, cloneInfo.getCloneUrl(), branch, commitHash,
+				retrieveLfs, retrieveSubmodules, 0, infoLogger, warningLogger);
+		try {
+			// Never mark success until checkout, submodules, and branch setup have all finished.
+			Files.createFile(successfulFile.toPath());
+		} catch (IOException e) {
+			throw new RuntimeException(e);
 		}
 	}
 

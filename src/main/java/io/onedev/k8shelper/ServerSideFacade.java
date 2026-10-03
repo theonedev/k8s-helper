@@ -99,7 +99,7 @@ public class ServerSideFacade extends LeafFacade {
 		} catch (IOException e) {
 			throw new RuntimeException(e);
 		} finally {
-			FileUtils.deleteDir(filesDir);
+			FileUtils.deletePath(filesDir);
 		}
 	}
 	
