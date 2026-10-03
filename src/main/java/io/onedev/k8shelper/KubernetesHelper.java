@@ -1,6 +1,7 @@
 package io.onedev.k8shelper;
 
 import static com.google.common.base.Preconditions.checkNotNull;
+import static io.onedev.commons.utils.FileUtils.hasSymbolLinks;
 import static java.nio.charset.StandardCharsets.UTF_8;
 import static jakarta.ws.rs.client.Entity.entity;
 import static jakarta.ws.rs.core.MediaType.APPLICATION_OCTET_STREAM;
@@ -532,22 +533,6 @@ public class KubernetesHelper {
         while (matcher.find())   
         	placeholderFiles.add(matcher.group(1));
 		return placeholderFiles;
-	}
-
-	/*
-	 * Build dir is accessible to job containers, and symbol links planted there will be
-	 * resolved against host file system when accessed from outside of containers
-	 */
-	public static boolean hasSymbolLinks(File baseDir, File file) {
-		var currentPath = baseDir.toPath();
-		for (var segment: currentPath.relativize(file.toPath())) {
-			currentPath = currentPath.resolve(segment);
-			if (Files.isSymbolicLink(currentPath))
-				return true;
-			if (!Files.exists(currentPath, LinkOption.NOFOLLOW_LINKS))
-				break;
-		}
-		return false;
 	}
 
 	public static Map<String, String> readPlaceholderValues(File baseDir, Collection<String> placeholders) {

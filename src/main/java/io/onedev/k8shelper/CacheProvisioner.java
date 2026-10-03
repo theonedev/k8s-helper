@@ -75,7 +75,7 @@ public abstract class CacheProvisioner implements Serializable {
             pathDir = new File(baseDir, "work/" + path);
         else
             throw new ExplicitException("Cache path does not allow to contain '..': " + path);
-        if (KubernetesHelper.hasSymbolLinks(baseDir, pathDir))
+        if (FileUtils.hasSymbolLinks(baseDir, pathDir))
             throw new ExplicitException("Cache path does not allow to contain symbol links: " + path);
         return pathDir;
     }

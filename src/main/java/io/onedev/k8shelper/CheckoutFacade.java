@@ -60,7 +60,7 @@ public class CheckoutFacade extends LeafFacade {
 		} else {
 			checkoutDir = workDir;
 		}
-		if (KubernetesHelper.hasSymbolLinks(workDir.getAbsoluteFile().getParentFile(), checkoutDir.getAbsoluteFile()))
+		if (FileUtils.hasSymbolLinks(workDir.getAbsoluteFile().getParentFile(), checkoutDir.getAbsoluteFile()))
 			throw new ExplicitException("Checkout path does not allow to contain symbol links");
 		git.workingDir(checkoutDir);
 		FileUtils.createDir(checkoutDir);

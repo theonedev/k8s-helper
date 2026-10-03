@@ -10,7 +10,7 @@ import java.util.Collection;
 import java.util.Map;
 import java.util.Set;
 
-import static io.onedev.k8shelper.KubernetesHelper.hasSymbolLinks;
+import static io.onedev.commons.utils.FileUtils.hasSymbolLinks;
 import static io.onedev.k8shelper.KubernetesHelper.readPlaceholderValues;
 import static io.onedev.k8shelper.KubernetesHelper.replacePlaceholders;
 

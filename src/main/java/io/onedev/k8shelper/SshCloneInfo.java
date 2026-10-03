@@ -35,8 +35,8 @@ public class SshCloneInfo extends CloneInfo {
 		File sshDir = new File(resourceDir, ".ssh");
 		File privateKeyFile = new File(sshDir, "id_rsa");
 		File knownHostsFile = new File(sshDir, "known_hosts");
-		if (KubernetesHelper.hasSymbolLinks(resourceDir, privateKeyFile)
-				|| KubernetesHelper.hasSymbolLinks(resourceDir, knownHostsFile)) {
+		if (FileUtils.hasSymbolLinks(resourceDir, privateKeyFile)
+				|| FileUtils.hasSymbolLinks(resourceDir, knownHostsFile)) {
 			throw new ExplicitException("Git SSH credential paths must not contain symbolic links");
 		}
 		FileUtils.createDir(sshDir);
