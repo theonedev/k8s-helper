@@ -33,14 +33,17 @@ public class BuildImageFacade extends LeafFacade {
 
 	private final String platforms;
 
+	private final String moreOptions;
+
 	public BuildImageFacade(@Nullable String buildPath, @Nullable String dockerFile,
 							Output output, List<RegistryLoginFacade> registryLogins,
-							@Nullable String platforms) {
+							@Nullable String platforms, @Nullable String moreOptions) {
 		this.buildPath = buildPath;
 		this.dockerfile = dockerFile;
 		this.output = output;
 		this.registryLogins = registryLogins;
 		this.platforms = platforms;
+		this.moreOptions = moreOptions;
 	}
 
 	@Nullable
@@ -64,6 +67,11 @@ public class BuildImageFacade extends LeafFacade {
 	@Nullable
 	public String getPlatforms() {
 		return platforms;
+	}
+
+	@Nullable
+	public String getMoreOptions() {
+		return moreOptions;
 	}
 
 	/** Validate expanded paths still controlled by the build specification. */
