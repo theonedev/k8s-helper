@@ -13,6 +13,7 @@ import org.jspecify.annotations.Nullable;
 import java.io.File;
 import java.io.IOException;
 import java.io.Serializable;
+import java.nio.file.Files;
 import java.util.List;
 
 import static io.onedev.commons.utils.StringUtils.parseQuoteTokens;
@@ -32,17 +33,14 @@ public class BuildImageFacade extends LeafFacade {
 
 	private final String platforms;
 
-	private final String moreOptions;
-
 	public BuildImageFacade(@Nullable String buildPath, @Nullable String dockerFile,
 							Output output, List<RegistryLoginFacade> registryLogins,
-							@Nullable String platforms, @Nullable String moreOptions) {
+							@Nullable String platforms) {
 		this.buildPath = buildPath;
 		this.dockerfile = dockerFile;
 		this.output = output;
 		this.registryLogins = registryLogins;
 		this.platforms = platforms;
-		this.moreOptions = moreOptions;
 	}
 
 	@Nullable
@@ -68,9 +66,22 @@ public class BuildImageFacade extends LeafFacade {
 		return platforms;
 	}
 
-	@Nullable
-	public String getMoreOptions() {
-		return moreOptions;
+	/** Validate expanded paths still controlled by the build specification. */
+	public static File resolvePath(File hostBuildDir, String path) {
+		if (path.isBlank() || !PathUtils.isSubPath(path) || path.contains(":") || path.contains("\\")
+				|| path.indexOf('\0') != -1)
+			throw new ExplicitException("Build image paths must be relative local paths without '..'");
+		var workDir = new File(hostBuildDir, "work").getAbsoluteFile();
+		var resolved = workDir.toPath().resolve(path).normalize().toFile();
+		if (Files.isSymbolicLink(workDir.toPath()) || FileUtils.hasSymbolLinks(workDir, resolved))
+			throw new ExplicitException("Build image paths must not contain symbolic links");
+		try {
+			if (!resolved.getCanonicalFile().toPath().startsWith(workDir.getCanonicalFile().toPath()))
+				throw new ExplicitException("Build image paths must stay inside the job workdir");
+		} catch (IOException e) {
+			throw new ExplicitException("Unable to validate build image path: " + path, e);
+		}
+		return resolved;
 	}
 
 	public interface Output extends Serializable {
@@ -114,11 +125,9 @@ public class BuildImageFacade extends LeafFacade {
 
 		@Override
 		public void execute(Commandline docker, File hostBuildDir, LineConsumer infoLogger, LineConsumer errorLogger) {
-			if (!PathUtils.isSubPath(destPath))
-				throw new ExplicitException("OCI output path should be a relative path not containing '..'");
-			var destDir = new File(new File(hostBuildDir, "work"), replacePlaceholders(destPath, hostBuildDir));
+			var destDir = resolvePath(hostBuildDir, replacePlaceholders(destPath, hostBuildDir));
 			FileUtils.createDir(destDir);
-			docker.addArgs("-o type=oci,dest=-");
+			docker.addArgs("-o", "type=oci,dest=-");
 			docker.execute(is -> Bootstrap.executorService.submit(() -> {
 				try (is) {
 					TarUtils.untar(is, destDir, false);
