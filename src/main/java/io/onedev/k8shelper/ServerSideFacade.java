@@ -92,14 +92,8 @@ public class ServerSideFacade extends LeafFacade {
 
 			var result = runner.run(filesDir, placeholderValues);
 			
-			for (Map.Entry<String, byte[]> entry: result.getOutputFiles().entrySet()) {
-				FileUtils.writeByteArrayToFile(
-						new File(buildDir, entry.getKey()),
-						entry.getValue());
-			}
+			result.writeOutputFiles(buildDir);
 			return result.isSuccessful();
-		} catch (IOException e) {
-			throw new RuntimeException(e);
 		} finally {
 			FileUtils.deletePath(filesDir);
 		}

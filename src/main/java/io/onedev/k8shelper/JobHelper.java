@@ -1,5 +1,6 @@
 package io.onedev.k8shelper;
 
+import static io.onedev.commons.utils.FileUtils.hasSymbolLinks;
 import static io.onedev.k8shelper.KubernetesHelper.GIT_TRUST_ALL_DIRS;
 import static io.onedev.k8shelper.KubernetesHelper.LOG_END_MESSAGE;
 import static io.onedev.k8shelper.KubernetesHelper.WORKDIR;
@@ -52,6 +53,7 @@ import jakarta.ws.rs.core.Response;
 import jakarta.ws.rs.core.StreamingOutput;
 
 import org.apache.commons.compress.utils.IOUtils;
+import org.apache.commons.io.FilenameUtils;
 import org.glassfish.jersey.client.ClientProperties;
 import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
@@ -135,12 +137,36 @@ public class JobHelper {
 		return new File(BUILD_PATH);
 	}
 	
+	/**
+	 * Resolve a path accessed by trusted code after a build container has run.
+	 * The build directory itself is trusted, but its entries may have been replaced
+	 * with symbolic links (including dangling links) by a previous step.
+	 */
+	public static File resolveBuildPath(File buildDir, String path) {
+		if (path.contains("..") || FilenameUtils.getPrefixLength(path) != 0)
+			throw new ExplicitException("Build path must be relative and must not contain '..': " + path);
+		var file = new File(buildDir, path);
+		if (Files.isSymbolicLink(buildDir.toPath()) || hasSymbolLinks(buildDir, file))
+			throw new ExplicitException("Build path must not contain symbolic links: " + path);
+		return file;
+	}
+
+	public static void resumeJob(File buildDir) {
+		try {
+			// createNewFile is atomic and never follows an existing link. The paused
+			// container can still change this entry after resolveBuildPath checks it.
+			resolveBuildPath(buildDir, "continue").createNewFile();
+		} catch (IOException e) {
+			throw new RuntimeException(e);
+		}
+	}
+
 	private static File getJobDataFile() {
-		return new File(getBuildDir(), "job-data");
+		return resolveBuildPath(getBuildDir(), "job-data");
 	}
 	
 	private static File getTrustCertsDir() {
-		return new File(getBuildDir(), "trust-certs");
+		return resolveBuildPath(getBuildDir(), "trust-certs");
 	}
 	
 	private static File getWorkDir() {
@@ -148,11 +174,11 @@ public class JobHelper {
 	}
 	
 	private static File getCommandDir() {
-		return new File(getBuildDir(), "command");
+		return resolveBuildPath(getBuildDir(), "command");
 	}
 	
 	private static File getMarkDir() {
-		return new File(getBuildDir(), "mark");
+		return resolveBuildPath(getBuildDir(), "mark");
 	}
 	
 	private static TaskLogger newInfoTaskLogger() {
@@ -334,7 +360,7 @@ public class JobHelper {
 				File stepScriptFile = null;
 				for (File eachFile: getCommandDir().listFiles()) {
 					if (eachFile.getName().startsWith("step-" + positionStr + ".")) {
-						stepScriptFile = eachFile;
+						stepScriptFile = resolveBuildPath(getBuildDir(), "command/" + eachFile.getName());
 						break;
 					}
 				}
@@ -353,11 +379,11 @@ public class JobHelper {
 					stepScript = replacePlaceholders(stepScript, getBuildDir());
 					FileUtils.writeFile(stepScriptFile, stepScript, UTF_8);
 					
-					file = new File(getMarkDir(), positionStr + ".start");
+					file = resolveBuildPath(getBuildDir(), "mark/" + positionStr + ".start");
 					if (!file.createNewFile()) 
 						throw new RuntimeException("Failed to create file: " + file.getAbsolutePath());
 				} catch (Exception e) {
-					file = new File(getMarkDir(), positionStr + ".error");
+					file = resolveBuildPath(getBuildDir(), "mark/" + positionStr + ".error");
 
 					ExplicitException explicitException = ExceptionUtils.find(e, ExplicitException.class);
 					String errorMessage;
@@ -369,8 +395,8 @@ public class JobHelper {
 					FileUtils.writeFile(file, errorMessage, UTF_8);
 				}
 			
-				File successfulFile = new File(getMarkDir(), positionStr + ".successful");
-				File failedFile = new File(getMarkDir(), positionStr + ".failed");
+				File successfulFile = resolveBuildPath(getBuildDir(), "mark/" + positionStr + ".successful");
+				File failedFile = resolveBuildPath(getBuildDir(), "mark/" + positionStr + ".failed");
 				while (!successfulFile.exists() && !failedFile.exists()) {
 					try {
 						Thread.sleep(100);
@@ -383,7 +409,7 @@ public class JobHelper {
 
 			@Override
 			public void skip(LeafFacade facade, List<Integer> position) {
-				File file = new File(getMarkDir(), stringifyStepPosition(position) + ".skip");
+				File file = resolveBuildPath(getBuildDir(), "mark/" + stringifyStepPosition(position) + ".skip");
 				try {
 					if (!file.createNewFile()) 
 						throw new RuntimeException("Failed to create file: " + file.getAbsolutePath());
@@ -462,15 +488,7 @@ public class JobHelper {
 		
 		var result = runServerStep(sslFactory, serverUrl, jobToken, position, baseDir,
 				includeFiles, excludeFiles, placeholderValues, logger);
-		for (Map.Entry<String, byte[]> entry: result.getOutputFiles().entrySet()) {
-			try {
-				FileUtils.writeByteArrayToFile(
-						new File(buildDir, entry.getKey()), 
-						entry.getValue());
-			} catch (IOException e) {
-				throw new RuntimeException(e);
-			}
-		}
+		result.writeOutputFiles(buildDir);
 		return result.isSuccessful();
 	}
 	
@@ -521,7 +539,7 @@ public class JobHelper {
 	}
 
 	private static File getCacheProvisionersFile() {
-		return new File(getMarkDir(), "cache-provisioners");
+		return resolveBuildPath(getBuildDir(), "mark/cache-provisioners");
 	}
 
 	private static void writeCacheProvisioners(List<CacheProvisioner> cacheProvisioners) {

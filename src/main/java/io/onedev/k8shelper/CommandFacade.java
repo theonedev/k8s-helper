@@ -71,7 +71,7 @@ public class CommandFacade extends LeafFacade {
 
 	public void generatePauseCommand(File buildDir) {
 		if (SystemUtils.IS_OS_WINDOWS) {
-			FileUtils.writeFile(new File(buildDir, "pause.bat"), ""
+			FileUtils.writeFile(JobHelper.resolveBuildPath(buildDir, "pause.bat"), ""
 					+ "@echo off\r\n"
 					+ "if exist \"%ONEDEV_WORKDIR%\\..\\continue\" (\r\n"
 					+ "  del \"%ONEDEV_WORKDIR%\\..\\continue\"\r\n"
@@ -85,12 +85,12 @@ public class CommandFacade extends LeafFacade {
 					+ "  goto :repeat\r\n"
 					+ ")\r\n");
 		} else { 
-			FileUtils.writeFile(new File(buildDir, "pause.sh"), ""
+			FileUtils.writeFile(JobHelper.resolveBuildPath(buildDir, "pause.sh"), ""
 					+ "rm -f $ONEDEV_WORKDIR/../continue\n"
 					+ "echo '##onedev[PauseExecution]'\n"
 					+ "while [ ! -f $ONEDEV_WORKDIR/../continue ]; do sleep 1; done\n");
 		}
-		FileUtils.writeFile(new File(buildDir, "pause"), interpreter.getPauseInvokeCommand());
+		FileUtils.writeFile(JobHelper.resolveBuildPath(buildDir, "pause"), interpreter.getPauseInvokeCommand());
 	}
 	
 	public String[] getScriptOptions() {
