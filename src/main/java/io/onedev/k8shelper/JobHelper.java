@@ -34,6 +34,7 @@ import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.Serializable;
+import java.nio.file.Files;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
@@ -454,9 +455,7 @@ public class JobHelper {
 										List<Integer> position, ServerSideFacade serverSideFacade,
 										File buildDir, TaskLogger logger) {
 		Map<String, String> placeholderValues = readPlaceholderValues(buildDir, serverSideFacade.getPlaceholders());
-		File baseDir = new File(buildDir, "work");
-		if (serverSideFacade.getSourcePath() != null)
-			baseDir = new File(baseDir, replacePlaceholders(serverSideFacade.getSourcePath(), placeholderValues));
+		File baseDir = serverSideFacade.getSourceDir(buildDir, placeholderValues);
 		
 		var includeFiles = replacePlaceholders(serverSideFacade.getIncludeFiles(), placeholderValues);
 		var excludeFiles = replacePlaceholders(serverSideFacade.getExcludeFiles(), placeholderValues);
@@ -479,6 +478,8 @@ public class JobHelper {
 												 List<Integer> position, File baseDir,
 												 Collection<String> includeFiles, Collection<String> excludeFiles,
 												 Map<String, String> placeholderValues, TaskLogger logger) {
+		if (Files.isSymbolicLink(baseDir.toPath()))
+			throw new ExplicitException("Source directory does not allow symbolic links: " + baseDir);
 		Client client = buildRestClient(sslFactory);
 		client.property(ClientProperties.REQUEST_ENTITY_PROCESSING, "CHUNKED");
 		try {
@@ -498,7 +499,7 @@ public class JobHelper {
 					writeString(os, entry.getValue());
 				}
 
-				TarUtils.tar(baseDir, includeFiles, excludeFiles, os, false);
+				TarUtils.tar(baseDir, includeFiles, excludeFiles, os, false, false);
 			};
 
 			try (Response response = builder.post(Entity.entity(output, MediaType.APPLICATION_OCTET_STREAM))) {

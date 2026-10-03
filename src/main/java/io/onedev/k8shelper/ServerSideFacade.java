@@ -2,7 +2,6 @@ package io.onedev.k8shelper;
 
 import io.onedev.commons.utils.ExplicitException;
 import io.onedev.commons.utils.FileUtils;
-import org.apache.tools.ant.DirectoryScanner;
 
 import org.jspecify.annotations.Nullable;
 import java.io.File;
@@ -11,6 +10,7 @@ import java.util.Collection;
 import java.util.Map;
 import java.util.Set;
 
+import static io.onedev.k8shelper.KubernetesHelper.hasSymbolLinks;
 import static io.onedev.k8shelper.KubernetesHelper.readPlaceholderValues;
 import static io.onedev.k8shelper.KubernetesHelper.replacePlaceholders;
 
@@ -57,32 +57,34 @@ public class ServerSideFacade extends LeafFacade {
 		return placeholders;
 	}
 
+	File getSourceDir(File buildDir, Map<String, String> placeholderValues) {
+		File sourceDir = new File(buildDir, "work");
+		if (getSourcePath() != null) {
+			String sourcePath = replacePlaceholders(getSourcePath(), placeholderValues);
+			if (sourcePath.contains(".."))
+				throw new ExplicitException("Source path should not contain '..'");
+			sourceDir = new File(sourceDir, sourcePath);
+		}
+		if (hasSymbolLinks(buildDir, sourceDir))
+			throw new ExplicitException("Source directory does not allow symbolic links: " + sourceDir);
+		return sourceDir;
+	}
+
 	public boolean execute(File buildDir, Runner runner) {
 		File filesDir = FileUtils.createTempDir();
 		try {
 			Collection<String> placeholders = getPlaceholders();
 			Map<String, String> placeholderValues = readPlaceholderValues(buildDir, placeholders);
 			
-			File sourceDir = new File(buildDir, "work");
-			if (getSourcePath() != null) {
-				String sourcePath = replacePlaceholders(getSourcePath(), placeholderValues);
-				if (sourcePath.contains(".."))
-					throw new ExplicitException("Source path should not contain '..'");
-				sourceDir = new File(sourceDir, sourcePath);
-			}
+			File sourceDir = getSourceDir(buildDir, placeholderValues);
 			
 			Collection<String> includeFiles = replacePlaceholders(getIncludeFiles(), placeholderValues);
 			Collection<String> excludeFiles = replacePlaceholders(getExcludeFiles(), placeholderValues);
 
-	    	DirectoryScanner scanner = new DirectoryScanner();
-	    	scanner.setBasedir(sourceDir);
-	    	scanner.setIncludes(includeFiles.toArray(new String[0]));
-	    	scanner.setExcludes(excludeFiles.toArray(new String[0]));
-	    	scanner.scan();
-			
-			for (String scanned: scanner.getIncludedFiles()) {
+			for (File file: FileUtils.listFiles(sourceDir, includeFiles, excludeFiles, false)) {
+				String scanned = sourceDir.toPath().relativize(file.toPath()).toString();
 				try {
-					FileUtils.copyFile(new File(sourceDir, scanned), new File(filesDir, scanned));
+					FileUtils.copyFile(file, new File(filesDir, scanned));
 				} catch (IOException e) {
 					throw new RuntimeException(e);
 				}
