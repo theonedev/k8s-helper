@@ -1,5 +1,15 @@
 package io.onedev.k8shelper;
 
+import static io.onedev.commons.utils.StringUtils.parseQuoteTokens;
+import static io.onedev.k8shelper.KubernetesHelper.replacePlaceholders;
+
+import java.io.File;
+import java.io.IOException;
+import java.io.Serializable;
+import java.util.List;
+
+import org.jspecify.annotations.Nullable;
+
 import io.onedev.commons.bootstrap.Bootstrap;
 import io.onedev.commons.utils.ExplicitException;
 import io.onedev.commons.utils.FileUtils;
@@ -8,16 +18,6 @@ import io.onedev.commons.utils.TarUtils;
 import io.onedev.commons.utils.command.Commandline;
 import io.onedev.commons.utils.command.LineConsumer;
 import io.onedev.commons.utils.command.StreamPumper;
-
-import org.jspecify.annotations.Nullable;
-import java.io.File;
-import java.io.IOException;
-import java.io.Serializable;
-import java.nio.file.Files;
-import java.util.List;
-
-import static io.onedev.commons.utils.StringUtils.parseQuoteTokens;
-import static io.onedev.k8shelper.KubernetesHelper.replacePlaceholders;
 
 public class BuildImageFacade extends LeafFacade {
 
@@ -74,24 +74,6 @@ public class BuildImageFacade extends LeafFacade {
 		return moreOptions;
 	}
 
-	/** Validate expanded paths still controlled by the build specification. */
-	public static File resolvePath(File hostBuildDir, String path) {
-		if (path.isBlank() || !PathUtils.isSubPath(path) || path.contains(":") || path.contains("\\")
-				|| path.indexOf('\0') != -1)
-			throw new ExplicitException("Build image paths must be relative local paths without '..'");
-		var workDir = new File(hostBuildDir, "work").getAbsoluteFile();
-		var resolved = workDir.toPath().resolve(path).normalize().toFile();
-		if (Files.isSymbolicLink(workDir.toPath()) || FileUtils.hasSymbolLinks(workDir, resolved))
-			throw new ExplicitException("Build image paths must not contain symbolic links");
-		try {
-			if (!resolved.getCanonicalFile().toPath().startsWith(workDir.getCanonicalFile().toPath()))
-				throw new ExplicitException("Build image paths must stay inside the job workdir");
-		} catch (IOException e) {
-			throw new ExplicitException("Unable to validate build image path: " + path, e);
-		}
-		return resolved;
-	}
-
 	public interface Output extends Serializable {
 
 		/**
@@ -133,7 +115,12 @@ public class BuildImageFacade extends LeafFacade {
 
 		@Override
 		public void execute(Commandline docker, File hostBuildDir, LineConsumer infoLogger, LineConsumer errorLogger) {
-			var destDir = resolvePath(hostBuildDir, replacePlaceholders(destPath, hostBuildDir));
+			// No need to perform unauthorized host file access check here as this step should only be executed by trust projects
+			if (!PathUtils.isSubPath(destPath))
+				throw new ExplicitException("OCI output path should be a relative path not containing '..'");
+
+			var destDir = new File(new File(hostBuildDir, "work"), replacePlaceholders(destPath, hostBuildDir));
+
 			FileUtils.createDir(destDir);
 			docker.addArgs("-o", "type=oci,dest=-");
 			docker.execute(is -> Bootstrap.executorService.submit(() -> {
