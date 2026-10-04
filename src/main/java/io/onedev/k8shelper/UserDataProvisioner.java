@@ -14,6 +14,7 @@ import java.util.function.Function;
 
 import com.google.common.base.Preconditions;
 
+import io.onedev.commons.utils.ExplicitException;
 import io.onedev.commons.utils.FileUtils;
 import io.onedev.commons.utils.TaskLogger;
 import io.onedev.commons.utils.command.Commandline;
@@ -45,7 +46,10 @@ public abstract class UserDataProvisioner implements Serializable {
 	}
 
 	public File getPathFile(File workspaceDir, int pathIndex) {
-		return new File(workspaceDir, USER_DATA_DIR + "/" + pathIndex);
+		var pathFile = new File(workspaceDir, USER_DATA_DIR + "/" + pathIndex);
+		if (FileUtils.hasSymbolLinks(workspaceDir, pathFile))
+			throw new ExplicitException("User data path does not allow to contain symbol links: " + pathFile);
+		return pathFile;
 	}
 
 	public String getSubPath(int pathIndex) {

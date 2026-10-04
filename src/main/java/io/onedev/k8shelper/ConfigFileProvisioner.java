@@ -10,6 +10,7 @@ import java.util.function.Function;
 
 import com.google.common.base.Preconditions;
 
+import io.onedev.commons.utils.ExplicitException;
 import io.onedev.commons.utils.FileUtils;
 import io.onedev.commons.utils.TaskLogger;
 import io.onedev.commons.utils.command.Commandline;
@@ -34,7 +35,10 @@ public class ConfigFileProvisioner {
 	}
 
 	public File getPathFile(File workspaceDir, int pathIndex) {
-		return new File(workspaceDir, "config-files/" + pathIndex);
+		var pathFile = new File(workspaceDir, "config-files/" + pathIndex);
+		if (FileUtils.hasSymbolLinks(workspaceDir, pathFile))
+			throw new ExplicitException("Config file path does not allow to contain symbol links: " + pathFile);
+		return pathFile;
 	}
 
 	public String getSubPath(int pathIndex) {
@@ -42,8 +46,6 @@ public class ConfigFileProvisioner {
 	}
 
 	public void provision(File workspaceDir, TaskLogger logger) {
-		var configFilesDir = new File(workspaceDir, "config-files");
-		FileUtils.createDir(configFilesDir);
 		for (var configFile : configFiles) {
 			logger.log("Provisioning config file '" + configFile.getPath() + "'...");
 			var pathIndex = Preconditions.checkNotNull(pathIndexes.get(configFile.getPath()));			
