@@ -347,6 +347,8 @@ public class WorkspaceHelper {
 			@Nullable String commands, ScriptConfig scriptConfig) {
 		if (commands != null) {
 			File scriptFile = new File(workspaceDir, scriptName + scriptConfig.getScriptExtension());
+			if (FileUtils.hasSymbolLinks(workspaceDir, scriptFile))
+				throw new ExplicitException("Workspace script must not contain symbolic links: " + scriptFile);
 			try {
 				FileUtils.writeStringToFile(scriptFile, commands, UTF_8);
 			} catch (IOException e) {
