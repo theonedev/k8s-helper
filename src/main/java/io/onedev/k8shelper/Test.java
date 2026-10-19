@@ -61,7 +61,7 @@ public class Test {
 			try (Response response = builder.get()) {
 				checkStatus(response);
 			}
-			logger.info("Successfully connected to OneDev server");
+			logger.info("Successfully connected to server");
 		} finally {
 			client.close();
 		}
