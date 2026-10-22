@@ -400,6 +400,12 @@ public class KubernetesHelper {
 	public static CacheAvailability downloadCache(String serverUrl, String apiPath, 
 			String token, String key, @Nullable String checksum, String path,
 			File cacheDir, @Nullable SSLFactory sslFactory) {
+		return downloadCache(serverUrl, apiPath, token, key, checksum, path, cacheDir, sslFactory, false);
+	}
+
+	public static CacheAvailability downloadCache(String serverUrl, String apiPath,
+			String token, String key, @Nullable String checksum, String path,
+			File cacheDir, @Nullable SSLFactory sslFactory, boolean allowExternalSymlinks) {
 		Client client = buildRestClient(sslFactory);
 		try {
 			WebTarget target = client.target(serverUrl)
@@ -414,7 +420,7 @@ public class KubernetesHelper {
 				try (InputStream is = response.readEntity(InputStream.class)) {
 					CacheAvailability availability = CacheAvailability.values()[is.read()];
 					if (availability != CacheAvailability.NOT_FOUND)
-						TarUtils.untar(is, cacheDir, false);
+						TarUtils.untar(is, cacheDir, false, allowExternalSymlinks);
 					return availability;
 				} catch (IOException e) {
 					throw new RuntimeException(e);
@@ -609,14 +615,21 @@ public class KubernetesHelper {
 
 	public static CacheProvisioner newCacheProvisioner(String serverUrl, String apiPath, 
 				String token, CacheConfigFacade config, File trustCertsDir, int configIndex) {
-		return new CacheProvisioner(config, configIndex) {
+		return newCacheProvisioner(serverUrl, apiPath, token, config, trustCertsDir, configIndex, false);
+	}
+
+	/** External targets are only safe when restored and used inside an isolated job container. */
+	public static CacheProvisioner newCacheProvisioner(String serverUrl, String apiPath,
+				String token, CacheConfigFacade config, File trustCertsDir, int configIndex,
+				boolean allowExternalSymlinks) {
+		return new CacheProvisioner(config, configIndex, allowExternalSymlinks) {
 
 			@Override
 			protected CacheAvailability download(String key, @Nullable String checksum,
 					String path, File pathDir) {
 				var sslFactory = KubernetesHelper.buildSSLFactory(trustCertsDir);
 				return KubernetesHelper.downloadCache(serverUrl, apiPath, token,
-						key, checksum, path, pathDir, sslFactory);
+						key, checksum, path, pathDir, sslFactory, isAllowExternalSymlinks());
 			}
 
 			@Override

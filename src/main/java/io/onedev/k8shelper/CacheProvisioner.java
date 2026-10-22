@@ -36,11 +36,18 @@ public abstract class CacheProvisioner implements Serializable {
 
     private final int configIndex;
 
+    private final boolean allowExternalSymlinks;
+
     private Date provisionDate;
 
     public CacheProvisioner(CacheConfigFacade config, int configIndex) {
+        this(config, configIndex, false);
+    }
+
+    public CacheProvisioner(CacheConfigFacade config, int configIndex, boolean allowExternalSymlinks) {
         this.config = config;
         this.configIndex = configIndex;
+        this.allowExternalSymlinks = allowExternalSymlinks;
         absolutePathIndexes = new HashMap<>();
         var absolutePathIndex = 1;
         for (var entry : config.getEntries()) {
@@ -56,6 +63,10 @@ public abstract class CacheProvisioner implements Serializable {
 
     public CacheConfigFacade getConfig() {
         return config;
+    }
+
+    boolean isAllowExternalSymlinks() {
+        return allowExternalSymlinks;
     }
 
     public Map<String, Integer> getAbsolutePathIndexes() {

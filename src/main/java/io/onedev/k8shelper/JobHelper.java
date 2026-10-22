@@ -581,8 +581,9 @@ public class JobHelper {
 		var entryFacade = new CompositeFacade(readJobData().getActions());
 		var cacheConfig = ((SetupCacheFacade) entryFacade.getFacade(position)).getCacheConfig();
 		var cacheProvisioners = readCacheProvisioners();
+		// Kubernetes jobs restore and use these links inside the pod, never on the host.
 		var cacheProvisioner = newCacheProvisioner(serverUrl, "~api/worker/job-cache", 
-				jobToken, cacheConfig, getTrustCertsDir(), getCacheConfigIndex(entryFacade, position));
+				jobToken, cacheConfig, getTrustCertsDir(), getCacheConfigIndex(entryFacade, position), true);
 		cacheProvisioner.download(getBuildDir(), new TaskLogger() {
 
 			@Override

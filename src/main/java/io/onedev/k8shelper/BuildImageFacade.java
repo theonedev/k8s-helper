@@ -93,6 +93,10 @@ public class BuildImageFacade extends LeafFacade {
 			this.tags = tags;
 		}
 
+		public String getTags() {
+			return tags;
+		}
+
 		@Override
 		public void execute(Commandline docker, File hostBuildDir, LineConsumer infoLogger, LineConsumer errorLogger) {
 			docker.addArgs("--push");
@@ -111,6 +115,10 @@ public class BuildImageFacade extends LeafFacade {
 
 		public OCIOutput(String destPath) {
 			this.destPath = destPath;
+		}
+
+		public String getDestPath() {
+			return destPath;
 		}
 
 		@Override
