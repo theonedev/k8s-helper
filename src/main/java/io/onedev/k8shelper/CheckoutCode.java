@@ -25,7 +25,7 @@ public class CheckoutCode {
 			String checkoutPath = null;
 			if (args.length >= 6) 
 				checkoutPath = new String(Base64.getDecoder().decode(args[5]), StandardCharsets.UTF_8);
-			JobHelper.checkoutCode(serverUrl, jobToken, args[0], Boolean.parseBoolean(args[1]), 
+			JobHelper.checkoutCode(Boolean.parseBoolean(args[1]),
 					Boolean.parseBoolean(args[2]), Integer.parseInt(args[3]), CloneInfo.fromString(args[4]), 
 					checkoutPath);
 		} catch (Exception e) {

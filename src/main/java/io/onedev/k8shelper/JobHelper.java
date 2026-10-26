@@ -36,12 +36,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.Serializable;
 import java.nio.file.Files;
-import java.util.ArrayList;
-import java.util.Collection;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.concurrent.atomic.AtomicInteger;
+import java.util.*;
 import java.util.regex.Pattern;
 
 import jakarta.ws.rs.client.Client;
@@ -255,29 +250,26 @@ public class JobHelper {
 		FileUtils.createDir(getCommandDir());
 		FileUtils.createDir(getMarkDir());
 		KubernetesJobData jobData;
-		Client client = buildRestClient(sslFactory);
-		try {
-			WebTarget target = client.target(serverUrl)
-					.path("~api/worker/job-data")
-					.queryParam("token", jobToken)
-					.queryParam("workDir", getWorkDir().getAbsolutePath());
-			Invocation.Builder builder =  target.request();
+        try (var client = buildRestClient(sslFactory)) {
+            WebTarget target = client.target(serverUrl)
+                    .path("~api/worker/job-data")
+                    .queryParam("token", jobToken)
+                    .queryParam("workDir", getWorkDir().getAbsolutePath());
+            Invocation.Builder builder = target.request();
 
-			logger.info("Retrieving job data from {}...", serverUrl);
-			
-			byte[] jobDataBytes;
-			try (Response response = builder.get()) {
-				checkStatus(response);
-				jobDataBytes = response.readEntity(byte[].class);
-			}
-			
-			FileUtils.writeByteArrayToFile(getJobDataFile(), jobDataBytes);
-			jobData = deserialize(jobDataBytes);
-		} catch (IOException e) {
-			throw new RuntimeException(e);
-		} finally {
-			client.close();
-		}
+            logger.info("Retrieving job data from {}...", serverUrl);
+
+            byte[] jobDataBytes;
+            try (Response response = builder.get()) {
+                checkStatus(response);
+                jobDataBytes = response.readEntity(byte[].class);
+            }
+
+            FileUtils.writeByteArrayToFile(getJobDataFile(), jobDataBytes);
+            jobData = deserialize(jobDataBytes);
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
 		
 		File workDir = getWorkDir();
 		FileUtils.createDir(workDir);
@@ -295,9 +287,8 @@ public class JobHelper {
 			} else {
 				String command;
 				String classPath = "/k8s-helper/*";
-				if (facade instanceof CheckoutFacade) {
-					CheckoutFacade checkoutFacade = (CheckoutFacade) facade;
-					command = String.format("java -classpath \"%s\" io.onedev.k8shelper.CheckoutCode %s %b %b %d %s",
+				if (facade instanceof CheckoutFacade checkoutFacade) {
+                    command = String.format("java -classpath \"%s\" io.onedev.k8shelper.CheckoutCode %s %b %b %d %s",
 							classPath, positionStr, checkoutFacade.isWithLfs(), checkoutFacade.isWithSubmodules(),
 							checkoutFacade.getCloneDepth(), checkoutFacade.getCloneInfo().toString());
 					if (checkoutFacade.getCheckoutPath() != null) {
@@ -312,10 +303,7 @@ public class JobHelper {
 							classPath, positionStr);
 				}
 
-				var commandsBuilder = new StringBuilder();
-				commandsBuilder.append(command).append("\n");
-
-				commandFacade = new CommandFacade("any", "0:0", new ArrayList<>(), new HashMap<>(), true, commandsBuilder.toString());
+                commandFacade = new CommandFacade("any", "0:0", new ArrayList<>(), new HashMap<>(), true, command + "\n");
 			}
 
 			generateCommandScript(position, commandFacade, workingDir);
@@ -336,7 +324,7 @@ public class JobHelper {
 	public static List<Integer> parseStepPosition(String stepPosition) {
 		return Splitter.on('-').splitToList(stepPosition)
 				.stream()
-				.map(it->Integer.parseInt(it))
+				.map(Integer::parseInt)
 				.collect(toList());
 	}
 	
@@ -350,7 +338,7 @@ public class JobHelper {
 		return deserialize(jobDataBytes);
 	}
 	
-	public static boolean sidecar(String serverUrl, String jobToken) {
+	public static boolean sidecar() {
 		LeafHandler commandHandler = new LeafHandler() {
 
 			@Override
@@ -358,7 +346,7 @@ public class JobHelper {
 				String positionStr = stringifyStepPosition(position);
 				File file;
 				File stepScriptFile = null;
-				for (File eachFile: getCommandDir().listFiles()) {
+				for (File eachFile: Objects.requireNonNull(getCommandDir().listFiles())) {
 					if (eachFile.getName().startsWith("step-" + positionStr + ".")) {
 						stepScriptFile = resolveBuildPath(getBuildDir(), "command/" + eachFile.getName());
 						break;
@@ -369,9 +357,8 @@ public class JobHelper {
 				try {
 					String stepScript = readFileToString(stepScriptFile, UTF_8);
 
-					if (facade instanceof CommandFacade) {
-						CommandFacade commandFacade = (CommandFacade) facade;
-						commandFacade.generatePauseCommand(getBuildDir());
+					if (facade instanceof CommandFacade commandFacade) {
+                        commandFacade.generatePauseCommand(getBuildDir());
 						if (!commandFacade.getRunAs().equals("0:0"))
 							changeOwner(getBuildDir(), commandFacade.getRunAs(), true);
 					}
@@ -434,9 +421,8 @@ public class JobHelper {
 		return successful;
 	}
 		
-	static void checkoutCode(String serverUrl, String jobToken, String positionStr,
-			boolean withLfs, boolean withSubmodules, int cloneDepth, CloneInfo cloneInfo, 
-			@Nullable String checkoutPath) throws IOException {
+	static void checkoutCode(boolean withLfs, boolean withSubmodules, int cloneDepth, CloneInfo cloneInfo,
+							 @Nullable String checkoutPath) {
 		KubernetesJobData jobData = readJobData();
 		
 		logger.info("Checking out code from {}...", cloneInfo.getCloneUrl());
@@ -498,44 +484,41 @@ public class JobHelper {
 												 Map<String, String> placeholderValues, TaskLogger logger) {
 		if (Files.isSymbolicLink(baseDir.toPath()))
 			throw new ExplicitException("Source directory does not allow symbolic links: " + baseDir);
-		Client client = buildRestClient(sslFactory);
-		client.property(ClientProperties.REQUEST_ENTITY_PROCESSING, "CHUNKED");
-		try {
-			WebTarget target = client.target(serverUrl)
-					.path("~api/worker/run-server-step")
-					.queryParam("token", jobToken);
-			Invocation.Builder builder = target.request();
+        try (var client = buildRestClient(sslFactory)) {
+            client.property(ClientProperties.REQUEST_ENTITY_PROCESSING, "CHUNKED");
+            WebTarget target = client.target(serverUrl)
+                    .path("~api/worker/run-server-step")
+                    .queryParam("token", jobToken);
+            Invocation.Builder builder = target.request();
 
-			StreamingOutput output = os -> {
-				writeInt(os, position.size());
-				for (int each : position)
-					writeInt(os, each);
+            StreamingOutput output = os -> {
+                writeInt(os, position.size());
+                for (int each : position)
+                    writeInt(os, each);
 
-				writeInt(os, placeholderValues.size());
-				for (Map.Entry<String, String> entry : placeholderValues.entrySet()) {
-					writeString(os, entry.getKey());
-					writeString(os, entry.getValue());
-				}
+                writeInt(os, placeholderValues.size());
+                for (Map.Entry<String, String> entry : placeholderValues.entrySet()) {
+                    writeString(os, entry.getKey());
+                    writeString(os, entry.getValue());
+                }
 
-				TarUtils.tar(baseDir, includeFiles, excludeFiles, os, false, false);
-			};
+                TarUtils.tar(baseDir, includeFiles, excludeFiles, os, false, false);
+            };
 
-			try (Response response = builder.post(Entity.entity(output, MediaType.APPLICATION_OCTET_STREAM))) {
-				checkStatus(response);
-				try (InputStream is = response.readEntity(InputStream.class)) {
-					while (readInt(is) == 1) {
-						logger.log(readString(is));
-					}
-					byte[] bytes = new byte[readInt(is)];
-					IOUtils.readFully(is, bytes);
-					return deserialize(bytes);
-				} catch (IOException e) {
-					throw new RuntimeException(e);
-				}
-			}
-		} finally {
-			client.close();
-		}
+            try (Response response = builder.post(Entity.entity(output, MediaType.APPLICATION_OCTET_STREAM))) {
+                checkStatus(response);
+                try (InputStream is = response.readEntity(InputStream.class)) {
+                    while (readInt(is) == 1) {
+                        logger.log(readString(is));
+                    }
+                    byte[] bytes = new byte[readInt(is)];
+                    IOUtils.readFully(is, bytes);
+                    return deserialize(bytes);
+                } catch (IOException e) {
+                    throw new RuntimeException(e);
+                }
+            }
+        }
 	}
 
 	private static File getCacheProvisionersFile() {
@@ -563,19 +546,6 @@ public class JobHelper {
 		}
 	}
 
-	private static int getCacheConfigIndex(CompositeFacade entryFacade, List<Integer> position) {
-		var index = new AtomicInteger(1);
-		var cacheConfigIndex = entryFacade.traverse((facade, eachPosition) -> {
-			if (facade instanceof SetupCacheFacade) {
-				int currentIndex = index.getAndIncrement();
-				if (eachPosition.equals(position))
-					return currentIndex;
-			}
-			return null;
-		}, new ArrayList<>());
-		return Preconditions.checkNotNull(cacheConfigIndex);
-	}
-
 	static void setupCache(String serverUrl, String jobToken, String positionStr) {
 		var position = parseStepPosition(positionStr);
 		var entryFacade = new CompositeFacade(readJobData().getActions());
@@ -583,7 +553,7 @@ public class JobHelper {
 		var cacheProvisioners = readCacheProvisioners();
 		// Kubernetes jobs restore and use these links inside the pod, never on the host.
 		var cacheProvisioner = newCacheProvisioner(serverUrl, "~api/worker/job-cache", 
-				jobToken, cacheConfig, getTrustCertsDir(), getCacheConfigIndex(entryFacade, position), true);
+				jobToken, cacheConfig, getTrustCertsDir(), true);
 		cacheProvisioner.download(getBuildDir(), new TaskLogger() {
 
 			@Override
@@ -598,23 +568,20 @@ public class JobHelper {
 
 	public static void downloadDependencies(String serverUrl, String jobToken,
 											File targetDir, SSLFactory sslFactory) {
-		Client client = buildRestClient(sslFactory);
-		try {
-			WebTarget target = client.target(serverUrl)
-					.path("~api/worker/dependencies")
-					.queryParam("token", jobToken);
-			Invocation.Builder builder =  target.request();
-			try (Response response = builder.get()){
-				checkStatus(response);
-				try (InputStream is = response.readEntity(InputStream.class)) {
-					TarUtils.untar(is, targetDir, false);
-				} catch (IOException e) {
-					throw new RuntimeException(e);
-				}
-			}
-		} finally {
-			client.close();
-		}
+        try (var client = buildRestClient(sslFactory)) {
+            WebTarget target = client.target(serverUrl)
+                    .path("~api/worker/dependencies")
+                    .queryParam("token", jobToken);
+            Invocation.Builder builder = target.request();
+            try (Response response = builder.get()) {
+                checkStatus(response);
+                try (InputStream is = response.readEntity(InputStream.class)) {
+                    TarUtils.untar(is, targetDir, false);
+                } catch (IOException e) {
+                    throw new RuntimeException(e);
+                }
+            }
+        }
 	}
 
 	public static void logEndMessage(Logger logger) {

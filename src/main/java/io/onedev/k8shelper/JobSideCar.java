@@ -15,7 +15,7 @@ public class JobSideCar {
 			String jobToken = checkNotNull(System.getenv(JobHelper.ENV_JOB_TOKEN));
 
 			JobHelper.logEndMessage(logger);
-			if (JobHelper.sidecar(serverUrl, jobToken))
+			if (JobHelper.sidecar())
 				System.exit(0);
 			else
 				System.exit(1);

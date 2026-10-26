@@ -1,18 +1,20 @@
 package io.onedev.k8shelper;
 
 import static io.onedev.commons.utils.StringUtils.parseQuoteTokens;
+import static java.nio.charset.StandardCharsets.UTF_8;
 
 import java.io.File;
 import java.io.Serializable;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.text.MessageFormat;
 import java.util.Arrays;
 import java.util.Date;
 import java.util.HashMap;
+import java.util.HexFormat;
 import java.util.List;
 import java.util.Map;
 import java.util.function.Function;
-
-import com.google.common.base.Preconditions;
 
 import io.onedev.commons.utils.ExplicitException;
 import io.onedev.commons.utils.FileUtils;
@@ -27,48 +29,69 @@ public abstract class UserDataProvisioner implements Serializable {
 
 	protected final List<UserDataFacade> userDatas;
 
-	protected final Map<String, Integer> pathIndexes;
-	
-	private Date provisionDate;
+	private final Map<String, Date> provisionDates = new HashMap<>();
 
 	public UserDataProvisioner(List<UserDataFacade> userDatas) {
 		this.userDatas = userDatas;
-		pathIndexes = new HashMap<String, Integer>();
-		var pathIndex = 1;
-		for (var userData : userDatas) {
-			for (var entry : userData.getEntries()) 
-				pathIndexes.put(entry.getPath(), pathIndex++);
-		}
 	}
 
-	public Map<String, Integer> getPathIndexes() {
-		return pathIndexes;
-	}
-
-	public File getPathFile(File workspaceDir, int pathIndex) {
-		var pathFile = new File(workspaceDir, USER_DATA_DIR + "/" + pathIndex);
+	public File getPathFile(File workspaceDir, String key, String path) {
+		var pathFile = new File(workspaceDir, getDataPath(key, path));
 		if (FileUtils.hasSymbolLinks(workspaceDir, pathFile))
 			throw new ExplicitException("User data path does not allow to contain symbol links: " + pathFile);
 		return pathFile;
 	}
 
-	public String getSubPath(int pathIndex) {
-		return USER_DATA_DIR + "/" + pathIndex;
+	private String getUserDataDirName(String key, String path) {
+		try {
+			var name = HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256")
+					.digest((key + "\0" + path).getBytes(UTF_8)));
+			return USER_DATA_DIR + "/" + name;
+		} catch (NoSuchAlgorithmException e) {
+			throw new IllegalStateException(e);
+		}
+	}
+
+	public String getDataPath(String key, String path) {
+		return getUserDataDirName(key, path) + "/data";
+	}
+
+	public String getStatePath(String key, String path) {
+		return getUserDataDirName(key, path) + "/state";
+	}
+
+	private File getStateFile(File workspaceDir, String key, String path) {
+		var stateFile = new File(workspaceDir, getStatePath(key, path));
+		if (FileUtils.hasSymbolLinks(workspaceDir, stateFile))
+			throw new ExplicitException("User data state path does not allow to contain symbol links: " + stateFile);
+		if (stateFile.exists() && !stateFile.isFile())
+			throw new ExplicitException("User data state should be a file: " + stateFile);
+		return stateFile;
 	}
 
 	public void download(File workspaceDir, TaskLogger logger) {
+		provisionDates.clear();
 		for (var userData : userDatas) {
 			var key = userData.getKey();
-			logger.log("Downloading user data '" + key + "'...");
+			var downloadLogged = false;
 			for (var entry: userData.getEntries()) {
 				var path = entry.getPath();
-				var pathIndex = Preconditions.checkNotNull(pathIndexes.get(path));
-				var pathFile = getPathFile(workspaceDir, pathIndex);
-				if (!pathFile.exists())
+				var pathFile = getPathFile(workspaceDir, key, path);
+				var stateFile = getStateFile(workspaceDir, key, path);
+				if (!pathFile.exists()) {
+					FileUtils.deletePath(stateFile);
+					if (!downloadLogged) {
+						logger.log("Downloading user data '" + key + "'...");
+						downloadLogged = true;
+					}
 					download(key, path, pathFile);
+					// Keep the restore baseline across activations without putting metadata inside user data.
+					FileUtils.touchFile(stateFile);
+				}
+				if (stateFile.exists())
+					provisionDates.put(getDataPath(key, path), new Date(stateFile.lastModified()));
 			}
 		}
-		provisionDate = new Date();
 	}
 
 	public void upload(File workspaceDir, TaskLogger logger) {
@@ -81,10 +104,10 @@ public abstract class UserDataProvisioner implements Serializable {
 				
 				var excludes = Arrays.asList(parseQuoteTokens(entry.getExcludes()));				
 
-				var pathIndex = Preconditions.checkNotNull(pathIndexes.get(path));
-				var pathFile = getPathFile(workspaceDir, pathIndex);
+				var pathFile = getPathFile(workspaceDir, key, path);
 				if (!pathFile.exists())
 					continue;
+				var provisionDate = provisionDates.get(getDataPath(key, path));
 				var changed = false;
 				if (provisionDate == null) 
 					changed = true;
@@ -111,9 +134,11 @@ public abstract class UserDataProvisioner implements Serializable {
 	protected abstract void notifyUploaded(String key);
 
 	public void mountVolumes(Commandline docker, File workspaceDir, Function<String, String> hostPathResolver) {
-		for (var entry: pathIndexes.entrySet()) {
-			var pathFile = getPathFile(workspaceDir, entry.getValue());
-			docker.addArgs("-v", hostPathResolver.apply(pathFile.getAbsolutePath()) + ":" + entry.getKey());
+		for (var userData : userDatas) {
+			for (var entry : userData.getEntries()) {
+				var pathFile = getPathFile(workspaceDir, userData.getKey(), entry.getPath());
+				docker.addArgs("-v", hostPathResolver.apply(pathFile.getAbsolutePath()) + ":" + entry.getPath());
+			}
 		}
 	}
 

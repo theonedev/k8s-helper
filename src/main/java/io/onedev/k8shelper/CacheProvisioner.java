@@ -1,15 +1,24 @@
 package io.onedev.k8shelper;
 
 import static io.onedev.k8shelper.UploadStrategy.UPLOAD_IF_NOT_EXACT_MATCH;
+import static java.nio.charset.StandardCharsets.UTF_8;
+import static java.nio.file.StandardCopyOption.ATOMIC_MOVE;
+import static java.nio.file.StandardCopyOption.REPLACE_EXISTING;
 
-import java.io.File;
-import java.io.Serializable;
+import java.io.*;
+import java.nio.file.AtomicMoveNotSupportedException;
+import java.nio.file.Files;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.util.Arrays;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.HexFormat;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
+import java.util.Properties;
 import java.util.Set;
 import java.util.function.Function;
 
@@ -24,41 +33,33 @@ import io.onedev.commons.utils.command.Commandline;
 
 public abstract class CacheProvisioner implements Serializable {
 
+    @Serial
     private static final long serialVersionUID = 1L;
 
     private final CacheConfigFacade config;
 
-    private final String CACHE_DIR_PREFIX = "cache-";
-
-    private final Map<String, Integer> absolutePathIndexes;
-
     private final Set<String> exactMatchPaths = new HashSet<>();
-
-    private final int configIndex;
 
     private final boolean allowExternalSymlinks;
 
-    private Date provisionDate;
+    private final Map<String, Date> provisionDates = new HashMap<>();
 
-    public CacheProvisioner(CacheConfigFacade config, int configIndex) {
-        this(config, configIndex, false);
+    public CacheProvisioner(CacheConfigFacade config) {
+        this(config, false);
     }
 
-    public CacheProvisioner(CacheConfigFacade config, int configIndex, boolean allowExternalSymlinks) {
+    public CacheProvisioner(CacheConfigFacade config, boolean allowExternalSymlinks) {
         this.config = config;
-        this.configIndex = configIndex;
         this.allowExternalSymlinks = allowExternalSymlinks;
-        absolutePathIndexes = new HashMap<>();
-        var absolutePathIndex = 1;
-        for (var entry : config.getEntries()) {
-            var path = entry.getPath();
-            if (FilenameUtils.getPrefixLength(path) > 0)
-                absolutePathIndexes.put(path, absolutePathIndex++);
-        }
     }
 
-    private String getCacheDirName() {
-        return CACHE_DIR_PREFIX + configIndex;
+    private String getCacheDirName(String path) {
+        try {
+            var name = HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(path.getBytes(UTF_8)));
+            return "cache/" + name;
+        } catch (NoSuchAlgorithmException e) {
+            throw new IllegalStateException(e);
+        }
     }
 
     public CacheConfigFacade getConfig() {
@@ -69,19 +70,14 @@ public abstract class CacheProvisioner implements Serializable {
         return allowExternalSymlinks;
     }
 
-    public Map<String, Integer> getAbsolutePathIndexes() {
-        return absolutePathIndexes;
-    }
-
-    public String getSubPath(int absolutePathIndex) {
-        return getCacheDirName() + "/" + absolutePathIndex;
+    public String getDataPath(String path) {
+        return getCacheDirName(path) + "/data";
     }
 
     public File getPathDir(File baseDir, String path) {
         File pathDir;
-        var pathIndex = absolutePathIndexes.get(path);
-        if (pathIndex != null)
-            pathDir = new File(baseDir, getCacheDirName() + "/" + pathIndex);
+        if (FilenameUtils.getPrefixLength(path) > 0)
+            pathDir = new File(baseDir, getDataPath(path));
         else if (!path.contains(".."))
             pathDir = new File(baseDir, "work/" + path);
         else
@@ -92,12 +88,33 @@ public abstract class CacheProvisioner implements Serializable {
     }
 
     public void download(File baseDir, TaskLogger logger) {
+        download(baseDir, logger, false);
+    }
+
+    /** Optionally retain cache contents and their upload baseline across workspace activations. */
+    public void download(File baseDir, TaskLogger logger, boolean trackState) {
         config.replacePlaceholders(baseDir);
         config.computeChecksum(new File(baseDir, "work"), logger);
+        exactMatchPaths.clear();
+        provisionDates.clear();
 
         for (var entry: config.getEntries()) {
             var path = entry.getPath();
             var pathDir = getPathDir(baseDir, path);
+            var stateFile = trackState ? getStateFile(baseDir, path) : null;
+            var state = stateFile != null ? readState(stateFile) : null;
+            if (state != null && pathDir.isDirectory()
+                    && config.getKey().equals(state.getProperty("key"))) {
+                if (Boolean.parseBoolean(state.getProperty("exactMatch"))
+                        && Objects.equals(config.getChecksum(), state.getProperty("checksum"))) {
+                    exactMatchPaths.add(path);
+                }
+                provisionDates.put(path, new Date(Long.parseLong(state.getProperty("provisionDate"))));
+                continue;
+            }
+            // A failed replacement must not leave metadata describing the previous contents.
+            if (stateFile != null)
+                FileUtils.deletePath(stateFile);
             FileUtils.createDir(pathDir);
             var availability = download(config.getKey(), config.getChecksum(), path, pathDir);
             if (availability == CacheAvailability.EXACT_MATCH)
@@ -107,8 +124,62 @@ public abstract class CacheProvisioner implements Serializable {
 
             if (availability == CacheAvailability.EXACT_MATCH)
                 exactMatchPaths.add(path);
+            if (stateFile != null) {
+                var restoredAt = new Date();
+                state = new Properties();
+                state.setProperty("key", config.getKey());
+                if (config.getChecksum() != null)
+                    state.setProperty("checksum", config.getChecksum());
+                state.setProperty("exactMatch", String.valueOf(availability == CacheAvailability.EXACT_MATCH));
+                state.setProperty("provisionDate", String.valueOf(restoredAt.getTime()));
+                writeState(stateFile, state);
+                provisionDates.put(path, restoredAt);
+            }
         }
-        provisionDate = new Date();
+        var completedAt = new Date();
+        for (var path : config.getPaths())
+            provisionDates.putIfAbsent(path, completedAt);
+    }
+
+    private File getStateFile(File baseDir, String path) {
+        var stateFile = new File(baseDir, getCacheDirName(path) + "/state");
+        if (FileUtils.hasSymbolLinks(baseDir, stateFile))
+            throw new ExplicitException("Cache state path does not allow to contain symbol links: " + stateFile);
+        return stateFile;
+    }
+
+    @Nullable
+    private Properties readState(File stateFile) {
+        if (!stateFile.exists())
+            return null;
+        try (var reader = Files.newBufferedReader(stateFile.toPath(), UTF_8)) {
+            var state = new Properties();
+            state.load(reader);
+            return state;
+        } catch (IOException e) {
+            throw new UncheckedIOException(e);
+        }
+    }
+
+    private void writeState(File stateFile, Properties state) {
+        try {
+            Files.createDirectories(stateFile.toPath().getParent());
+            var temporary = Files.createTempFile(stateFile.toPath().getParent(), ".restore-", ".tmp");
+            try {
+                try (var writer = Files.newBufferedWriter(temporary, UTF_8)) {
+                    state.store(writer, null);
+                }
+                try {
+                    Files.move(temporary, stateFile.toPath(), ATOMIC_MOVE, REPLACE_EXISTING);
+                } catch (AtomicMoveNotSupportedException e) {
+                    Files.move(temporary, stateFile.toPath(), REPLACE_EXISTING);
+                }
+            } finally {
+                Files.deleteIfExists(temporary);
+            }
+        } catch (IOException e) {
+            throw new UncheckedIOException(e);
+        }
     }
 
     private void uploadThenLog(String path, File pathDir, List<String> excludes, TaskLogger logger) {
@@ -127,7 +198,8 @@ public abstract class CacheProvisioner implements Serializable {
                 if (!exactMatchPaths.contains(path)) 
                     uploadThenLog(path, pathDir, excludes, logger);
             } else {
-                if (provisionDate == null || FileUtils.hasChangedFiles(pathDir, provisionDate, excludes)) {
+                var restoredAt = provisionDates.get(path);
+                if (restoredAt == null || FileUtils.hasChangedFiles(pathDir, restoredAt, excludes)) {
                     logger.log("Changes detected in " + config.describe(path));
                     uploadThenLog(path, pathDir, excludes, logger);
                 }   

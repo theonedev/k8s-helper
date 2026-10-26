@@ -613,16 +613,16 @@ public class KubernetesHelper {
 		}
 	}
 
-	public static CacheProvisioner newCacheProvisioner(String serverUrl, String apiPath, 
-				String token, CacheConfigFacade config, File trustCertsDir, int configIndex) {
-		return newCacheProvisioner(serverUrl, apiPath, token, config, trustCertsDir, configIndex, false);
+	public static CacheProvisioner newCacheProvisioner(String serverUrl, String apiPath,
+				String token, CacheConfigFacade config, File trustCertsDir) {
+		return newCacheProvisioner(serverUrl, apiPath, token, config, trustCertsDir, false);
 	}
 
 	/** External targets are only safe when restored and used inside an isolated job container. */
 	public static CacheProvisioner newCacheProvisioner(String serverUrl, String apiPath,
-				String token, CacheConfigFacade config, File trustCertsDir, int configIndex,
+				String token, CacheConfigFacade config, File trustCertsDir,
 				boolean allowExternalSymlinks) {
-		return new CacheProvisioner(config, configIndex, allowExternalSymlinks) {
+		return new CacheProvisioner(config, allowExternalSymlinks) {
 
 			@Override
 			protected CacheAvailability download(String key, @Nullable String checksum,

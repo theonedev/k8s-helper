@@ -65,6 +65,8 @@ public class WorkspaceHelper {
 
 	public static final String SHUTDOWN_FILE = ".shutdown";
 
+	public static final String UPLOAD_DATA_FILE = ".upload-data";
+
 	public static final String TEARDOWN_DONE_FILE = ".teardown-done";
 
 	public static final String CONTAINER_READY_FILE = ".container-ready";
@@ -191,6 +193,7 @@ public class WorkspaceHelper {
 		FileUtils.createDir(getWorkDir());
 		FileUtils.deletePath(getShutdownFile());
 		FileUtils.deletePath(getTeardownDoneFile());
+		FileUtils.deletePath(new File(getWorkspaceDir(), UPLOAD_DATA_FILE));
 
 		SSLFactory sslFactory = buildSSLFactory(getTrustCertsDir());
 
@@ -209,8 +212,8 @@ public class WorkspaceHelper {
 		var cacheProvisioners = new ArrayList<CacheProvisioner>();
 		for (var config : workspaceData.getCacheConfigs()) {
 			var cacheProvisioner = newCacheProvisioner(serverUrl, "~api/worker/workspace-cache", 
-					workspaceToken, config, getTrustCertsDir(), cacheProvisioners.size() + 1);
-			cacheProvisioner.download(getWorkspaceDir(), newInfoTaskLogger());
+					workspaceToken, config, getTrustCertsDir());
+			cacheProvisioner.download(getWorkspaceDir(), newInfoTaskLogger(), true);
 			cacheProvisioners.add(cacheProvisioner);
 		}
 
@@ -254,6 +257,8 @@ public class WorkspaceHelper {
 		 * by the upload below
 		 */
 		awaitFile(getTeardownDoneFile());
+		if (!new File(getWorkspaceDir(), UPLOAD_DATA_FILE).exists())
+			return;
 
 		InitInfo initInfo = readInitInfo();
 		if (initInfo != null) {

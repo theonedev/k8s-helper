@@ -106,7 +106,7 @@ class CacheSymlinkTest {
     void containerCachePreservesExternalLinksWithoutUploadingTheirTargets() throws Exception {
         var build = Files.createDirectory(temp.resolve("build"));
         var provisioner = KubernetesHelper.newCacheProvisioner(serverUrl(), "~api/worker/job-cache",
-                "token", config(), temp.resolve("trust-certs").toFile(), 1, true);
+                "token", config(), temp.resolve("trust-certs").toFile(), true);
         // Kubernetes persists provisioners between setup and finalization.
         provisioner = SerializationUtils.clone(provisioner);
         provisioner.download(build.toFile(), logger);
@@ -135,7 +135,7 @@ class CacheSymlinkTest {
     void hostCacheEntryPointsKeepStrictDefaults() throws Exception {
         var build = Files.createDirectory(temp.resolve("build"));
         var provisioner = KubernetesHelper.newCacheProvisioner(serverUrl(), "~api/worker/job-cache",
-                "token", config(), temp.resolve("trust-certs").toFile(), 1);
+                "token", config(), temp.resolve("trust-certs").toFile());
         assertThrows(ExplicitException.class, () -> provisioner.download(build.toFile(), logger));
         assertThrows(ExplicitException.class, () -> KubernetesHelper.downloadCache(
                 serverUrl(), "~api/worker/job-cache", "token", "key", null, "cache",
@@ -149,7 +149,7 @@ class CacheSymlinkTest {
         var work = Files.createDirectory(build.resolve("work"));
         Files.createSymbolicLink(work.resolve("cache"), temp);
         var provisioner = KubernetesHelper.newCacheProvisioner(serverUrl(), "~api/worker/job-cache",
-                "token", config(), temp.resolve("trust-certs").toFile(), 1, true);
+                "token", config(), temp.resolve("trust-certs").toFile(), true);
         assertThrows(ExplicitException.class, () -> provisioner.download(build.toFile(), logger));
         assertEquals(0, downloads.get());
         assertEquals("must not be copied", Files.readString(outside));
