@@ -50,7 +50,7 @@ public class Test {
 		FileUtils.touch(new File(TEST_PATH, ".pvc-test"));
 		logger.info("PVC write test successful");
 
-		logger.info("Connecting to server '{}'...", serverUrl);
+		logger.info("Connecting to server '{}' from Kubernetes pod (helper init container)...", serverUrl);
 		SSLFactory sslFactory = buildSSLFactory(getTrustCertsDir());
 		Client client = buildRestClient(sslFactory);
 		try {
@@ -61,7 +61,7 @@ public class Test {
 			try (Response response = builder.get()) {
 				checkStatus(response);
 			}
-			logger.info("Successfully connected to server");
+			logger.info("Successfully connected to server from Kubernetes pod (helper init container)");
 		} finally {
 			client.close();
 		}
