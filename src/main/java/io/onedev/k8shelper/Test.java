@@ -1,23 +1,18 @@
 package io.onedev.k8shelper;
 
-import static com.google.common.base.Preconditions.checkNotNull;
-import static io.onedev.k8shelper.KubernetesHelper.buildRestClient;
-import static io.onedev.k8shelper.KubernetesHelper.buildSSLFactory;
-import static io.onedev.k8shelper.KubernetesHelper.checkStatus;
+import io.onedev.commons.utils.FileUtils;
+import jakarta.ws.rs.client.Invocation;
+import jakarta.ws.rs.client.WebTarget;
+import jakarta.ws.rs.core.Response;
+import nl.altindag.ssl.SSLFactory;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.io.File;
 import java.io.IOException;
 
-import jakarta.ws.rs.client.Client;
-import jakarta.ws.rs.client.Invocation;
-import jakarta.ws.rs.client.WebTarget;
-import jakarta.ws.rs.core.Response;
-
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
-import io.onedev.commons.utils.FileUtils;
-import nl.altindag.ssl.SSLFactory;
+import static com.google.common.base.Preconditions.checkNotNull;
+import static io.onedev.k8shelper.KubernetesHelper.*;
 
 public class Test {
 
@@ -50,21 +45,18 @@ public class Test {
 		FileUtils.touch(new File(TEST_PATH, ".pvc-test"));
 		logger.info("PVC write test successful");
 
-		logger.info("Connecting to server '{}' from Kubernetes pod (helper init container)...", serverUrl);
+		logger.info("Connecting to server '{}' from Kubernetes pod (helper container)...", serverUrl);
 		SSLFactory sslFactory = buildSSLFactory(getTrustCertsDir());
-		Client client = buildRestClient(sslFactory);
-		try {
-			WebTarget target = client.target(serverUrl)
-					.path("~api/worker/test")
-					.queryParam("token", token);
-			Invocation.Builder builder = target.request();
-			try (Response response = builder.get()) {
-				checkStatus(response);
-			}
-			logger.info("Successfully connected to server from Kubernetes pod (helper init container)");
-		} finally {
-			client.close();
-		}
+        try (var client = buildRestClient(sslFactory)) {
+            WebTarget target = client.target(serverUrl)
+                    .path("~api/worker/test")
+                    .queryParam("token", token);
+            Invocation.Builder builder = target.request();
+            try (Response response = builder.get()) {
+                checkStatus(response);
+            }
+            logger.info("Successfully connected to server from Kubernetes pod (helper init container)");
+        }
 	}
 
 }
