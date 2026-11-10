@@ -1,7 +1,7 @@
 package io.onedev.k8shelper;
 
 import java.io.File;
-import java.util.HashMap;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
@@ -21,7 +21,7 @@ public class RunContainerFacade extends LeafFacade {
 
 	private final String workingDir;
 
-	private final Map<String, String> volumeMounts;
+	private final List<VolumeMountFacade> volumeMounts;
 
 	private final List<RegistryLoginFacade> registryLogins;
 
@@ -29,7 +29,7 @@ public class RunContainerFacade extends LeafFacade {
 
 	public RunContainerFacade(String image, String runAs, @Nullable String args,
 							  Map<String, String> envMap, @Nullable String workingDir,
-							  Map<String, String> volumeMounts, List<RegistryLoginFacade> registryLogins,
+							  List<VolumeMountFacade> volumeMounts, List<RegistryLoginFacade> registryLogins,
 							  boolean useTTY) {
 		this.image = image;
 		this.runAs = runAs;
@@ -63,7 +63,7 @@ public class RunContainerFacade extends LeafFacade {
 		return workingDir;
 	}
 
-	public Map<String, String> getVolumeMounts() {
+	public List<VolumeMountFacade> getVolumeMounts() {
 		return volumeMounts;
 	}
 
@@ -86,11 +86,12 @@ public class RunContainerFacade extends LeafFacade {
 		var workingDir = this.workingDir;
 		if (workingDir != null)
 			workingDir = KubernetesHelper.replacePlaceholders(workingDir, buildDir);
-		var volumeMounts = new HashMap<String, String>();
-		for (var entry: this.volumeMounts.entrySet()) {
-			volumeMounts.put(
-				KubernetesHelper.replacePlaceholders(entry.getKey(), buildDir), 
-				KubernetesHelper.replacePlaceholders(entry.getValue(), buildDir));
+		var volumeMounts = new ArrayList<VolumeMountFacade>();
+		for (var mount: this.volumeMounts) {
+			volumeMounts.add(new VolumeMountFacade(
+					KubernetesHelper.replacePlaceholders(mount.getSourcePath(), buildDir),
+					KubernetesHelper.replacePlaceholders(mount.getTargetPath(), buildDir),
+					mount.isReadOnly()));
 		}
 		return new RunContainerFacade(image, runAs, args, envMap, workingDir, volumeMounts, registryLogins, useTTY);
 	}
