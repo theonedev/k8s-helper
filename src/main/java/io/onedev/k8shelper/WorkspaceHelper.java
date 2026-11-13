@@ -81,6 +81,8 @@ public class WorkspaceHelper {
 
 	public static final String TEARDOWN_SCRIPT_NAME = "teardown";
 
+	public static final String TASK_SCRIPT_NAME = "task";
+
 	public static final String ENV_TERM = "TERM";
 
 	private static final Logger logger = LoggerFactory.getLogger(WorkspaceHelper.class);
@@ -346,19 +348,19 @@ public class WorkspaceHelper {
 	public static void writeScripts(File workspaceDir, ScriptConfig scriptConfig) {
 		writeScript(workspaceDir, SETUP_SCRIPT_NAME, scriptConfig.getSetupCommands(), scriptConfig);
 		writeScript(workspaceDir, TEARDOWN_SCRIPT_NAME, scriptConfig.getTeardownCommands(), scriptConfig);
+		writeScript(workspaceDir, TASK_SCRIPT_NAME, scriptConfig.getTaskCommands(), scriptConfig);
 	}
 
-	private static void writeScript(File workspaceDir, String scriptName,
-			@Nullable String commands, ScriptConfig scriptConfig) {
-		if (commands != null) {
-			File scriptFile = new File(workspaceDir, scriptName + scriptConfig.getScriptExtension());
-			if (FileUtils.hasSymbolLinks(workspaceDir, scriptFile))
-				throw new ExplicitException("Workspace script must not contain symbolic links: " + scriptFile);
-			try {
-				FileUtils.writeStringToFile(scriptFile, commands, UTF_8);
-			} catch (IOException e) {
-				throw new RuntimeException(e);
-			}
+	private static void writeScript(File workspaceDir, String scriptName, @Nullable String commands, ScriptConfig scriptConfig) {
+		if (commands == null)
+			return;
+		var scriptFile = new File(workspaceDir, scriptName + scriptConfig.getScriptExtension());
+		if (FileUtils.hasSymbolLinks(workspaceDir, scriptFile))
+			throw new ExplicitException("Workspace script must not contain symbolic links: " + scriptFile);
+		try {
+			FileUtils.writeStringToFile(scriptFile, commands, UTF_8);
+		} catch (IOException e) {
+			throw new RuntimeException(e);
 		}
 	}
 

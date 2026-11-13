@@ -9,6 +9,9 @@ public class ScriptConfig implements Serializable {
 	private static final long serialVersionUID = 1L;
 
 	@Nullable
+	private final String taskCommands;
+
+	@Nullable
 	private final String setupCommands;
 
 	@Nullable
@@ -22,11 +25,22 @@ public class ScriptConfig implements Serializable {
 
 	public ScriptConfig(@Nullable String setupCommands, @Nullable String teardownCommands,
 			String scriptExtension, String scriptExecutable, String[] scriptOptions) {
+		this(null, setupCommands, teardownCommands, scriptExtension, scriptExecutable, scriptOptions);
+	}
+
+	public ScriptConfig(@Nullable String taskCommands, @Nullable String setupCommands,
+			@Nullable String teardownCommands, String scriptExtension, String scriptExecutable, String[] scriptOptions) {
+		this.taskCommands = taskCommands;
 		this.setupCommands = setupCommands;
 		this.teardownCommands = teardownCommands;
 		this.scriptExtension = scriptExtension;
 		this.scriptExecutable = scriptExecutable;
 		this.scriptOptions = scriptOptions;
+	}
+
+	@Nullable
+	public String getTaskCommands() {
+		return taskCommands;
 	}
 
 	@Nullable
