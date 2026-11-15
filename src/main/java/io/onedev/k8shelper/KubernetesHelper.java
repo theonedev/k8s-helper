@@ -15,6 +15,9 @@ import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.net.HttpURLConnection;
+import java.net.Proxy;
+import java.net.URL;
 import java.nio.ByteBuffer;
 import java.nio.charset.CharacterCodingException;
 import java.nio.file.Files;
@@ -32,6 +35,8 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 import javax.net.ssl.HostnameVerifier;
+import javax.net.ssl.HttpsURLConnection;
+import javax.net.ssl.SNIHostName;
 import jakarta.ws.rs.client.Client;
 import jakarta.ws.rs.client.ClientBuilder;
 import jakarta.ws.rs.client.Invocation;
@@ -41,7 +46,9 @@ import jakarta.ws.rs.core.StreamingOutput;
 
 import org.apache.commons.io.IOUtils;
 import org.apache.commons.lang3.time.DurationFormatUtils;
+import org.glassfish.jersey.client.ClientConfig;
 import org.glassfish.jersey.client.ClientProperties;
+import org.glassfish.jersey.client.HttpUrlConnectorProvider;
 import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -60,6 +67,10 @@ import nl.altindag.ssl.util.HostnameVerifierUtils;
 public class KubernetesHelper {
 
 	private static final Logger logger = LoggerFactory.getLogger(KubernetesHelper.class);
+
+	// A digits-only host can be shorthand for an IPv4 address.
+	private static final Pattern SINGLE_LABEL_HOST = Pattern.compile(
+			"(?=.*[a-z-])[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\\.?", Pattern.CASE_INSENSITIVE);
 	
 	public static final String LOG_END_MESSAGE = "===== End of OneDev K8s Helper Log =====";
 
@@ -390,8 +401,37 @@ public class KubernetesHelper {
 		return builder.build();
 	}
 
+	/**
+	 * Returns the explicit SNI name needed for a single-label hostname. JSSE supplies SNI for dotted DNS names.
+	 */
+	@Nullable
+	public static SNIHostName getSingleLabelServerName(@Nullable String host) {
+		if (host == null || !SINGLE_LABEL_HOST.matcher(host).matches())
+			return null;
+		if (host.endsWith("."))
+			host = host.substring(0, host.length() - 1);
+		return new SNIHostName(host);
+	}
+
 	public static Client buildRestClient(@Nullable SSLFactory sslFactory) {
-		var builder = ClientBuilder.newBuilder();
+		var socketFactory = new SniSocketFactory(sslFactory != null
+				? sslFactory.getSslSocketFactory()
+				: HttpsURLConnection.getDefaultSSLSocketFactory());
+		var connector = new HttpUrlConnectorProvider().connectionFactory(new HttpUrlConnectorProvider.ConnectionFactory() {
+			@Override
+			public HttpURLConnection getConnection(URL url) throws IOException {
+				return getConnection(url, null);
+			}
+
+			@Override
+			public HttpURLConnection getConnection(URL url, Proxy proxy) throws IOException {
+				var connection = (HttpURLConnection) (proxy != null ? url.openConnection(proxy) : url.openConnection());
+				if (connection instanceof HttpsURLConnection https)
+					https.setSSLSocketFactory(socketFactory);
+				return connection;
+			}
+		});
+		var builder = ClientBuilder.newBuilder().withConfig(new ClientConfig().connectorProvider(connector));
 		if (sslFactory != null)
 			builder.sslContext(sslFactory.getSslContext()).hostnameVerifier(sslFactory.getHostnameVerifier());
 		return builder.build();
