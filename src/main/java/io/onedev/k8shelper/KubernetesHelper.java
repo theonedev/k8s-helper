@@ -34,7 +34,6 @@ import java.util.function.Function;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
-import javax.net.ssl.HostnameVerifier;
 import javax.net.ssl.HttpsURLConnection;
 import javax.net.ssl.SNIHostName;
 import jakarta.ws.rs.client.Client;
@@ -62,7 +61,6 @@ import io.onedev.commons.utils.command.Commandline;
 import io.onedev.commons.utils.command.LineConsumer;
 import nl.altindag.ssl.SSLFactory;
 import nl.altindag.ssl.util.CertificateUtils;
-import nl.altindag.ssl.util.HostnameVerifierUtils;
 
 public class KubernetesHelper {
 
@@ -393,10 +391,6 @@ public class KubernetesHelper {
 					}
 				}
 			}
-
-			HostnameVerifier basicVerifier = HostnameVerifierUtils.createBasic();
-			HostnameVerifier fenixVerifier = HostnameVerifierUtils.createDefault();
-			builder.withHostnameVerifier((hostname, session) -> basicVerifier.verify(hostname, session) || fenixVerifier.verify(hostname, session));
 		}
 		return builder.build();
 	}
